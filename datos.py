@@ -94,7 +94,7 @@ def _csv(url: str) -> pd.DataFrame:
     import requests
     r = requests.get(url, timeout=30)
     r.raise_for_status()
-    return pd.read_csv(io.StringIO(r.text))
+    return pd.read_csv(io.StringIO(r.content.decode("utf-8-sig")))   # Sheets publica en UTF-8
 
 
 def desde_sheet():
@@ -115,6 +115,14 @@ def desde_sheet():
         calc[c] = calc[c].fillna("").astype(str).str.replace(r"\.0$", "", regex=True)
     hist["Fecha de corte"] = pd.to_datetime(hist["Fecha de corte"], dayfirst=True, errors="coerce")
     hist["Avance (%)"] = pd.to_numeric(hist["Avance (%)"], errors="coerce")
+    # Ultimo corte y acciones: se toman del Historial (ultimo reporte semanal con
+    # dato), que es la fuente mas fiable; la formula de la hoja no es igual en
+    # todas las versiones de Sheets.
+    base = hist["Fecha de corte"].min()
+    ult = (hist[hist["Avance (%)"].notna() & (hist["Fecha de corte"] > base)]
+           .sort_values("Fecha de corte").groupby("ID").last())
+    calc["Último corte"] = calc["ID"].map(ult["Fecha de corte"])
+    calc["Acciones"] = calc["ID"].map(ult["Acciones"]).fillna("")
     u3 = secreto("SEG100_HITOS_CSV")
     hitos = _csv(u3) if u3 else pd.DataFrame()
     if len(hitos):
