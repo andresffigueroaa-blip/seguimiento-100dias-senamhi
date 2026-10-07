@@ -134,7 +134,8 @@ def desde_sheet():
 # --------------------------------------------------- desde el .xlsx local
 def desde_xlsx(hoy: date | None = None):
     from openpyxl import load_workbook
-    hoy = hoy or date.today()
+    from zoneinfo import ZoneInfo
+    hoy = hoy or datetime.now(ZoneInfo("America/Lima")).date()
     wb = load_workbook(XLSX)
     ws = wb["Seguimiento"]
     n_fijas = 17

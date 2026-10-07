@@ -12,7 +12,8 @@ from __future__ import annotations
 import base64
 import hmac
 import io
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -87,8 +88,8 @@ def datos():
 
 
 calc, hist, hitos, fuente, aviso = datos()
-hoy = date.today()
-dia = int(calc["Día de gestión"].max()) if len(calc) else (hoy - INICIO_GOBIERNO).days + 1
+hoy = datetime.now(ZoneInfo("America/Lima")).date()   # el servidor puede estar en otra zona horaria
+dia = (hoy - INICIO_GOBIERNO).days + 1
 faltan = (DIA_100 - hoy).days
 
 
