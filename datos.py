@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import os
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import pandas as pd
@@ -123,6 +124,17 @@ def desde_sheet():
            .sort_values("Fecha de corte").groupby("ID").last())
     calc["Último corte"] = calc["ID"].map(ult["Fecha de corte"])
     calc["Acciones"] = calc["ID"].map(ult["Acciones"]).fillna("")
+    # Avance: ultimo valor con dato en el Historial (incluida la base del 02/10).
+    # La formula LOOKUP de la hoja no se recalcula igual en Sheets, asi que la app
+    # no depende de ella; con esto el dashboard refleja lo escrito el mismo dia.
+    todos = hist[hist["Avance (%)"].notna()].sort_values("Fecha de corte").groupby("ID").last()
+    calc["Avance (%)"] = calc["ID"].map(todos["Avance (%)"]).fillna(calc["Base (%)"])
+    hoy = datetime.now(ZoneInfo("America/Lima")).date()
+    calc["Situación de plazo"] = [
+        situacion_plazo(hoy, av if pd.notna(av) else None, fecha_valida(ini), fecha_valida(lim))
+        for av, ini, lim in zip(calc["Avance (%)"], calc["Fecha inicio"], calc["Fecha límite"])]
+    calc["Días para el límite"] = [(fecha_valida(lim) - hoy).days if fecha_valida(lim) else None
+                                   for lim in calc["Fecha límite"]]
     u3 = secreto("SEG100_HITOS_CSV")
     hitos = _csv(u3) if u3 else pd.DataFrame()
     if len(hitos):
