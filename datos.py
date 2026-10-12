@@ -1,36 +1,60 @@
 # -*- coding: utf-8 -*-
-"""Datos del seguimiento de 100 dias para la app.
+"""Datos del seguimiento: las dos matrices que viven en Drive.
 
-Fuente principal: las pestanas Calculos, Historial e Hitos_RutaElNino del
-Google Sheet, publicadas como CSV (URLs en st.secrets o variables de
-entorno). Respaldo: el libro .xlsx de la carpeta datos/, recalculado aqui
-con la misma logica de las formulas.
+1. PRIORIDADES 100 DIAS - SECTOR AMBIENTAL.xlsx (matriz MINAM): filas SENAMHI.
+2. MATRIZ DE ACCIONES PRIORITARIAS EN EL MARCO DEL FEN SENAMHI 2026.xlsx.
+
+Cada direccion actualiza su fila directamente en el archivo de Drive; la app lo
+descarga (secrets MATRIZ_100DIAS_URL / MATRIZ_FEN_URL) y, si no puede, usa la
+copia de datos/. La evolucion semanal sale de las instantaneas que guarda
+snapshot.py en datos/historial_*.csv (una fila por actividad y fecha).
 """
 from __future__ import annotations
 
 import io
 import os
+import re
+import unicodedata
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 AQUI = Path(__file__).resolve().parent
-XLSX = AQUI / "datos" / "Seguimiento_100dias_SENAMHI.xlsx"
+DATOS = AQUI / "datos"
+LOCAL_100 = DATOS / "matriz_100dias.xlsx"
+LOCAL_FEN = DATOS / "matriz_fen.xlsx"
+HIST_100 = DATOS / "historial_100dias.csv"
+HIST_FEN = DATOS / "historial_fen.csv"
+
 INICIO_GOBIERNO = date(2026, 7, 28)
 DIA_100 = date(2026, 11, 4)
 ESTADOS = ["Sin iniciar", "En proceso", "Con riesgo / retraso", "Completado", "Reprogramado"]
+ESTADOS_FEN = ["Sin iniciar", "En proceso", "En riesgo de retraso", "Implementado"]
 SITUACIONES = ["Completada", "En plazo", "Por iniciar", "Fecha límite vencida", "Sin fecha límite"]
 NOMBRE_DIR = {"DMCA": "Dirección de Meteorología, Clima y Ambiente Atmosférico",
               "DHI": "Dirección de Hidrología",
               "DSCA": "Dirección de Servicios, Cambio Climático y Agrometeorología",
               "DRD": "Dirección de Gestión de Redes de Observación y Datos"}
-COLS = ["ID", "Dirección", "Nombre corto", "Actividad", "Producto", "Unidad", "Meta", "Línea base",
-        "Prioridad (MINAM)", "Relacionada con El Niño", "Estado actual", "Enlace responsable",
-        "Fecha inicio", "Fecha límite", "Link entregable", "Alertas", "Último corte", "Avance (%)",
-        "Acciones", "Día de gestión", "Días para el límite", "Situación de plazo",
-        "Reportó esta semana", "Semanas sin reportar", "Hitos cumplidos", "Base (%)"]
+# ID fijo por actividad (palabras clave del texto de la matriz) y nombre corto (PPT 16/09/2026)
+ACTIVIDADES = [
+    ("SENAMHI-DHI-01", r"aforos", "Aforos de caudales en cuencas de Piura y Lima (alerta temprana)"),
+    ("SENAMHI-DHI-02", r"estacional", "Pronósticos hidrológicos estacionales"),
+    ("SENAMHI-DHI-03", r"\bares\b|inundaciones urbanas", "Portal ARES de inundaciones urbanas (Piura y Cusco)"),
+    ("SENAMHI-DHI-04", r"pandora|madre de dios", "Plataforma PANDORA en la cuenca del río Madre de Dios"),
+    ("SENAMHI-DRD-01", r"sensores", "Sensores automáticos en estaciones convencionales (vertiente occidental)"),
+    ("SENAMHI-DSCA-01", r"sequia agricola|sinmosa", "Monitor Integrado de Sequías (ISPI), incluye sequía agrícola"),
+    ("SENAMHI-DSCA-02", r"agrometeorologico", "Equipamiento agrometeorológico de precisión en estaciones MAP"),
+    ("SENAMHI-DSCA-03", r"sorian", "Plataforma SORIAN con modelos de alta resolución"),
+    ("SENAMHI-DMCA-01", r"vigilancia ambiental|calidad del aire", "Boletines de calidad del aire por incendios forestales en la Amazonía"),
+    ("SENAMHI-DMCA-02", r"dobson|intercomparacion", "Campaña de intercomparación de espectrofotómetros Dobson 2026"),
+    ("SENAMHI-DMCA-03", r"radar", "Productos de los radares meteorológicos de Piura e Ica"),
+    ("SENAMHI-DMCA-04", r"monitor de sequias", "Monitor de Sequías del SENAMHI v1 (índices climáticos)"),
+    ("SENAMHI-DMCA-05", r"ruta", "Ruta de Vigilancia El Niño (difusión en regiones expuestas)"),
+]
+PPT_NINO = {"SENAMHI-DRD-01", "SENAMHI-DSCA-03", "SENAMHI-DMCA-01", "SENAMHI-DMCA-05"}
+SIGLA_DIR = [("hidrolog", "DHI"), ("redes", "DRD"), ("servicios", "DSCA"), ("meteorolog", "DMCA")]
 
 
 def secreto(nombre: str) -> str:
@@ -43,20 +67,30 @@ def secreto(nombre: str) -> str:
     return os.environ.get(nombre, "").strip()
 
 
-# ------------------------------------------------------------ reglas
-def normalizar_avance(v):
-    if v is None or (isinstance(v, float) and pd.isna(v)):
+# ------------------------------------------------------------------ ayudas
+def plano(x) -> str:
+    n = unicodedata.normalize("NFKD", str(x or ""))
+    return re.sub(r"\s+", " ", "".join(c for c in n if not unicodedata.combining(c))).lower().strip()
+
+
+def texto(v) -> str:
+    return "" if v is None or (isinstance(v, float) and pd.isna(v)) else re.sub(r"\s+", " ", str(v)).strip()
+
+
+def numero(v):
+    if v is None or v == "":
         return None
-    if isinstance(v, str):
-        t = v.strip().replace("%", "").replace(",", ".")
-        if t in ("", "-"):
-            return None
-        try:
-            v = float(t)
-        except ValueError:
-            return None
-    v = float(v)
-    return round(v * 100 if v <= 1 else v, 2)
+    try:
+        return float(str(v).replace(",", "").replace("%", "").strip())
+    except ValueError:
+        return None
+
+
+def normalizar_avance(v):
+    x = numero(v)
+    if x is None:
+        return None
+    return round(x * 100 if x <= 1 else x, 1)
 
 
 def fecha_valida(v):
@@ -74,6 +108,11 @@ def fecha_valida(v):
     return d if d.year >= 2000 else None
 
 
+def sigla(direccion: str) -> str:
+    p = plano(direccion)
+    return next((s for k, s in SIGLA_DIR if k in p), texto(direccion)[:6] or "—")
+
+
 def situacion_plazo(hoy, avance, inicio, limite):
     if avance is not None and avance >= 100:
         return "Completada"
@@ -86,131 +125,224 @@ def situacion_plazo(hoy, avance, inicio, limite):
     return "En plazo"
 
 
-def proximo_corte(hoy: date) -> date:
-    return hoy + pd.Timedelta(days=(4 - hoy.weekday()) % 7)
+def ahora_lima() -> datetime:
+    return datetime.now(ZoneInfo("America/Lima"))
 
 
-# ------------------------------------------------------- desde el Sheet
-def _csv(url: str) -> pd.DataFrame:
+# ---------------------------------------------------------------- descarga
+def url_descarga(url: str) -> str:
+    """Convierte un enlace de Drive / Google Sheets en un enlace de descarga del archivo."""
+    u = url.strip()
+    if "docs.google.com/spreadsheets" in u:
+        m = re.search(r"/d/([\w-]+)", u)
+        return f"https://docs.google.com/spreadsheets/d/{m.group(1)}/export?format=xlsx" if m else u
+    if "drive.google.com" in u:
+        m = re.search(r"/d/([\w-]+)", u) or re.search(r"[?&]id=([\w-]+)", u)
+        return f"https://drive.google.com/uc?export=download&id={m.group(1)}" if m else u
+    return u
+
+
+def descargar(url: str) -> bytes:
     import requests
-    r = requests.get(url, timeout=30)
+    r = requests.get(url_descarga(url), timeout=40)
     r.raise_for_status()
-    return pd.read_csv(io.StringIO(r.content.decode("utf-8-sig")))   # Sheets publica en UTF-8
+    if b"<html" in r.content[:300].lower():
+        raise RuntimeError("Drive devolvió una página web, no el archivo: revisar que esté compartido "
+                           "con «Cualquier persona con el enlace».")
+    return r.content
 
 
-def desde_sheet():
-    u1, u2 = secreto("SEG100_CALCULOS_CSV"), secreto("SEG100_HISTORIAL_CSV")
-    if not (u1 and u2):
-        return None
-    calc, hist = _csv(u1), _csv(u2)
-    calc = calc[calc["ID"].notna() & (calc["ID"].astype(str).str.strip() != "")].copy()
-    hist = hist[hist["ID"].notna() & (hist["ID"].astype(str).str.strip() != "")].copy()
-    for c in ("Fecha inicio", "Fecha límite", "Último corte"):
-        calc[c] = pd.to_datetime(calc[c], dayfirst=True, errors="coerce")
-    for c in ("Avance (%)", "Base (%)", "Semanas sin reportar", "Día de gestión", "Días para el límite"):
-        calc[c] = pd.to_numeric(calc[c], errors="coerce")
-    for c in COLS:
-        if c not in calc.columns:
-            calc[c] = ""
-    for c in ("Meta", "Línea base"):
-        calc[c] = calc[c].fillna("").astype(str).str.replace(r"\.0$", "", regex=True)
-    hist["Fecha de corte"] = pd.to_datetime(hist["Fecha de corte"], dayfirst=True, errors="coerce")
-    hist["Avance (%)"] = pd.to_numeric(hist["Avance (%)"], errors="coerce")
-    # Ultimo corte y acciones: se toman del Historial (ultimo reporte semanal con
-    # dato), que es la fuente mas fiable; la formula de la hoja no es igual en
-    # todas las versiones de Sheets.
-    base = hist["Fecha de corte"].min()
-    ult = (hist[hist["Avance (%)"].notna() & (hist["Fecha de corte"] > base)]
-           .sort_values("Fecha de corte").groupby("ID").last())
-    calc["Último corte"] = calc["ID"].map(ult["Fecha de corte"])
-    calc["Acciones"] = calc["ID"].map(ult["Acciones"]).fillna("")
-    # Avance: ultimo valor con dato en el Historial (incluida la base del 02/10).
-    # La formula LOOKUP de la hoja no se recalcula igual en Sheets, asi que la app
-    # no depende de ella; con esto el dashboard refleja lo escrito el mismo dia.
-    todos = hist[hist["Avance (%)"].notna()].sort_values("Fecha de corte").groupby("ID").last()
-    calc["Avance (%)"] = calc["ID"].map(todos["Avance (%)"]).fillna(calc["Base (%)"])
-    hoy = datetime.now(ZoneInfo("America/Lima")).date()
-    calc["Situación de plazo"] = [
-        situacion_plazo(hoy, av if pd.notna(av) else None, fecha_valida(ini), fecha_valida(lim))
-        for av, ini, lim in zip(calc["Avance (%)"], calc["Fecha inicio"], calc["Fecha límite"])]
-    calc["Días para el límite"] = [(fecha_valida(lim) - hoy).days if fecha_valida(lim) else None
-                                   for lim in calc["Fecha límite"]]
-    u3 = secreto("SEG100_HITOS_CSV")
-    hitos = _csv(u3) if u3 else pd.DataFrame()
-    if len(hitos):
-        hitos = hitos[hitos["Fecha"].notna()].copy()
-        hitos["Fecha"] = pd.to_datetime(hitos["Fecha"], dayfirst=True, errors="coerce")
-    return calc, hist, hitos
-
-
-# --------------------------------------------------- desde el .xlsx local
-def desde_xlsx(hoy: date | None = None):
+def _hoja(contenido: bytes, nombre_contiene: str) -> list[list]:
     from openpyxl import load_workbook
-    from zoneinfo import ZoneInfo
-    hoy = hoy or datetime.now(ZoneInfo("America/Lima")).date()
-    wb = load_workbook(XLSX)
-    ws = wb["Seguimiento"]
-    n_fijas = 17
-    fechas = {j: ws.cell(1, j).value for j in range(n_fijas, ws.max_column + 1)
-              if hasattr(ws.cell(1, j).value, "year")}
-    fechas = {j: (f.date() if hasattr(f, "date") else f) for j, f in fechas.items()}
-    corte = proximo_corte(hoy)
-    calc, hist = [], []
-    for r in range(3, ws.max_row + 1):
-        id_ = ws.cell(r, 1).value
-        if not id_:
+    wb = load_workbook(io.BytesIO(contenido), data_only=True, read_only=True)
+    ws = next((w for w in wb.worksheets if nombre_contiene in plano(w.title)), wb.worksheets[-1])
+    return [list(r) for r in ws.iter_rows(values_only=True)]
+
+
+def _columnas(fila_cab) -> dict[str, int]:
+    """Indice de columna por encabezado (en minusculas y sin tildes)."""
+    return {plano(v): i for i, v in enumerate(fila_cab) if v not in (None, "")}
+
+
+def _col(cab: dict, *inicios) -> int | None:
+    for ini in inicios:
+        for k, i in cab.items():
+            if k.startswith(ini):
+                return i
+    return None
+
+
+def _celda(f, i):
+    return f[i] if i is not None and i < len(f) else None
+
+
+# ----------------------------------------------------- matriz 100 dias
+def leer_matriz_100(contenido: bytes) -> pd.DataFrame:
+    filas = _hoja(contenido, "prioridades")
+    i_cab = next(i for i, f in enumerate(filas[:20]) if any("actividad" in plano(v) for v in f if v))
+    cab = _columnas(filas[i_cab])
+    c = {"responsable": _col(cab, "responsable"), "eje": _col(cab, "eje"), "objetivo": _col(cab, "objetivo"),
+         "actividad": _col(cab, "actividad"), "producto": _col(cab, "producto"), "unidad": _col(cab, "unidad"),
+         "meta": _col(cab, "meta"), "lbase": _col(cab, "linea base"), "presupuesto": _col(cab, "presupuesto"),
+         "inicio": _col(cab, "fecha de inicio"), "limite": _col(cab, "fecha limite"), "prioridad": _col(cab, "nivel de"),
+         "apoyo": _col(cab, "entidad"), "estado": _col(cab, "estado"), "avance": _col(cab, "% de avance", "% de"),
+         "detalle": _col(cab, "detalle"), "riesgos": _col(cab, "riesgos")}
+    i_id = _col(cab, "n° id", "n°", "id")
+    out, usados = [], set()
+    for f in filas[i_cab + 1:]:
+        act = texto(_celda(f, c["actividad"]))
+        resp = texto(_celda(f, c["responsable"]))
+        # solo las filas cuyo N° ID dice SENAMHI (otras entidades del sector tienen direcciones con nombres parecidos)
+        if "senamhi" not in plano(_celda(f, i_id)) or not act:
             continue
-        f = [ws.cell(r, j).value for j in range(1, n_fijas + 1)]
-        (id_, dire, corto, act, prod, unidad, meta, lbase, prio, nino, fini, flim, estado,
-         enlace, link, alertas, base) = f
-        ini, lim, base = fecha_valida(fini), fecha_valida(flim), normalizar_avance(base)
-        ult, av, acc, sin = None, base, "", 0
-        for j, fc in fechas.items():
-            if j == n_fijas:
-                hist.append((id_, dire, corto, fc, base, "Avance inicial (matriz MINAM)"))
-                continue
-            v = normalizar_avance(ws.cell(r, j).value)
-            hist.append((id_, dire, corto, fc, v, ws.cell(r, j + 1).value if v is not None else None))
-            if v is not None:
-                ult, av, acc = fc, v, ws.cell(r, j + 1).value or ""
-            elif fc <= corte:
-                sin += 1
-        rep = any(ws.cell(r, j).value not in (None, "") for j, fc in fechas.items()
-                  if j != n_fijas and fc == corte)
-        calc.append({
-            "ID": id_, "Dirección": dire, "Nombre corto": corto or "", "Actividad": act or "",
-            "Producto": prod or "", "Unidad": unidad or "", "Meta": "" if meta is None else meta,
-            "Línea base": "" if lbase is None else lbase, "Prioridad (MINAM)": prio or "",
-            "Relacionada con El Niño": nino or "", "Estado actual": estado or "",
-            "Enlace responsable": enlace or "", "Fecha inicio": pd.Timestamp(ini) if ini else pd.NaT,
-            "Fecha límite": pd.Timestamp(lim) if lim else pd.NaT, "Link entregable": link or "",
-            "Alertas": alertas or "", "Último corte": pd.Timestamp(ult) if ult else pd.NaT,
-            "Avance (%)": av, "Acciones": acc, "Día de gestión": (hoy - INICIO_GOBIERNO).days + 1,
-            "Días para el límite": (lim - hoy).days if lim else None,
-            "Situación de plazo": situacion_plazo(hoy, av, ini, lim),
-            "Reportó esta semana": "Sí" if rep else "No", "Semanas sin reportar": sin,
-            "Hitos cumplidos": "", "Base (%)": base})
-    h = pd.DataFrame(hist, columns=["ID", "Dirección", "Nombre corto", "Fecha de corte", "Avance (%)", "Acciones"])
-    h["Fecha de corte"] = pd.to_datetime(h["Fecha de corte"])
-    wh = wb["Hitos_RutaElNino"]
-    hitos = pd.DataFrame([[wh.cell(r, j).value for j in range(1, 6)] for r in range(2, wh.max_row + 1)
-                          if wh.cell(r, 1).value],
-                         columns=["Fecha", "Evento / lugar", "Realizado (Sí/No)", "Observación", "Link evidencia"])
-    hitos["Fecha"] = pd.to_datetime(hitos["Fecha"])
-    df = pd.DataFrame(calc, columns=COLS)
-    for c in ("Meta", "Línea base"):
-        df[c] = df[c].map(lambda x: "" if x in ("", None) else (f"{x:g}" if isinstance(x, (int, float)) else str(x)))
-    return df, h, hitos
+        pa = plano(act) + " " + plano(_celda(f, c["producto"]))
+        id_ = next((i for i, rx, _ in ACTIVIDADES if re.search(rx, pa) and i not in usados), None)
+        if id_ is None:
+            s = sigla(resp)
+            id_ = f"SENAMHI-{s}-{sum(1 for u in usados if f'-{s}-' in u) + 1:02d}"
+        usados.add(id_)
+        corto = next((n for i, _, n in ACTIVIDADES if i == id_), act[:80])
+        nino = bool(re.search(r"\bnin[oa]\b|\bfen\b|enfen", pa)) or id_ in PPT_NINO
+        out.append({
+            "ID": id_, "Dirección": sigla(resp), "Nombre corto": corto, "Actividad": act,
+            "Eje": texto(_celda(f, c["eje"])), "Objetivo": texto(_celda(f, c["objetivo"])),
+            "Producto": texto(_celda(f, c["producto"])), "Unidad": texto(_celda(f, c["unidad"])),
+            "Meta": _num_txt(_celda(f, c["meta"])), "Línea base": _num_txt(_celda(f, c["lbase"])),
+            "Presupuesto": _num_txt(_celda(f, c["presupuesto"])),
+            "Fecha inicio": fecha_valida(_celda(f, c["inicio"])), "Fecha límite": fecha_valida(_celda(f, c["limite"])),
+            "Prioridad (MINAM)": texto(_celda(f, c["prioridad"])), "Entidades de apoyo": texto(_celda(f, c["apoyo"])),
+            "Estado actual": _estado(_celda(f, c["estado"]), ESTADOS),
+            "Avance (%)": normalizar_avance(_celda(f, c["avance"])),
+            "Detalle": texto(_celda(f, c["detalle"])), "Riesgos": texto(_celda(f, c["riesgos"])),
+            "Relacionada con El Niño": "Sí" if nino else "No"})
+    df = pd.DataFrame(out)
+    df["orden"] = df["ID"].map({i: k for k, (i, _, _) in enumerate(ACTIVIDADES)}).fillna(99)
+    return df.sort_values(["orden", "ID"]).drop(columns="orden").reset_index(drop=True)
 
 
-def cargar():
-    """(calculos, historial, hitos, fuente, aviso)."""
-    try:
-        r = desde_sheet()
-        if r is not None:
-            return (*r, "sheet", "")
-        aviso = "Sin conexión al Google Sheet: se muestra la última copia local."
-    except Exception as exc:          # noqa: BLE001
-        aviso = f"No se pudo leer el Google Sheet ({str(exc)[:90]}): se muestra la última copia local."
-    c, h, hi = desde_xlsx()
-    return c, h, hi, "xlsx", aviso
+def _num_txt(v) -> str:
+    x = numero(v)
+    if x is None:
+        return texto(v)
+    return f"{x:,.0f}".replace(",", " ") if x == int(x) else f"{x:,.2f}".replace(",", " ")
+
+
+def _estado(v, lista) -> str:
+    p = plano(v)
+    if not p:
+        return ""
+    if "implement" in p or "complet" in p or "culmin" in p:
+        return "Implementado" if "Implementado" in lista else "Completado"
+    if "riesgo" in p or "retras" in p:
+        return "En riesgo de retraso" if "En riesgo de retraso" in lista else "Con riesgo / retraso"
+    if "proces" in p:
+        return "En proceso"
+    if "reprogram" in p:
+        return "Reprogramado"
+    if "sin inic" in p or "no inic" in p:
+        return "Sin iniciar"
+    return texto(v)
+
+
+# ----------------------------------------------------------- matriz FEN
+def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
+    filas = _hoja(contenido, "fen")
+    i_cab = next(i for i, f in enumerate(filas[:20]) if any("actividad" in plano(v) for v in f if v))
+    cab = _columnas(filas[i_cab])
+    c = {"n": _col(cab, "n° id", "n°", "id"), "responsable": _col(cab, "responsable"), "eje": _col(cab, "eje"),
+         "objetivo": _col(cab, "objetivo"), "actividad": _col(cab, "actividad"), "producto": _col(cab, "producto"),
+         "unidad": _col(cab, "unidad"), "meta26": _col(cab, "meta al cierre", "meta 2026", "meta"),
+         "meta27": _col(cab, "meta al 2027"), "ejecutada": _col(cab, "meta ejecutada"), "estado": _col(cab, "estado"),
+         "detalle": _col(cab, "detalle"), "evidencia": _col(cab, "fotos", "evidencia", "link")}
+    out = []
+    for f in filas[i_cab + 1:]:
+        act = texto(_celda(f, c["actividad"]))
+        if not act:
+            continue
+        n = numero(_celda(f, c["n"]))
+        meta, ejec = numero(_celda(f, c["meta26"])), numero(_celda(f, c["ejecutada"]))
+        det = texto(_celda(f, c["detalle"]))
+        estado = _estado(_celda(f, c["estado"]), ESTADOS_FEN)
+        # Avance: meta ejecutada / meta 2026 si ambas son numeros; si no, el % que
+        # la direccion escribio en el detalle; si no, 100 cuando declara Implementado.
+        m = re.search(r"(\d{1,3})\s*%", det)
+        if meta and ejec is not None:
+            av, fuente = min(round(100 * ejec / meta, 1), 100.0), "meta ejecutada / meta 2026"
+        elif m:
+            av, fuente = min(float(m.group(1)), 100.0), "% escrito en el detalle"
+        elif estado == "Implementado":
+            av, fuente = 100.0, "estado Implementado"
+        else:
+            av, fuente = None, "sin dato"
+        evid = texto(_celda(f, c["evidencia"]))
+        prod = texto(_celda(f, c["producto"]))
+        out.append({
+            "N°": int(n) if n is not None else len(out) + 1, "Dirección": sigla(_celda(f, c["responsable"])),
+            "Eje": texto(_celda(f, c["eje"])), "Objetivo": texto(_celda(f, c["objetivo"])),
+            "Actividad": act, "Producto": prod, "Unidad": texto(_celda(f, c["unidad"])),
+            "Meta 2026": _num_txt(_celda(f, c["meta26"])), "Meta 2027": _num_txt(_celda(f, c["meta27"])),
+            "Meta ejecutada": _num_txt(_celda(f, c["ejecutada"])),
+            "Estado actual": estado, "Avance (%)": av, "Avance (fuente)": fuente, "Detalle": det,
+            "Evidencia": evid, "Enlaces": re.findall(r"https?://[^\s,;)]+", evid),
+            "Nombre corto": (prod or act)[:70]})
+    return pd.DataFrame(out)
+
+
+# -------------------------------------------------------------- historial
+def leer_historial(ruta: Path, clave: str) -> pd.DataFrame:
+    if not ruta.exists():
+        return pd.DataFrame({"Fecha": pd.Series(dtype="datetime64[ns]"), clave: pd.Series(dtype=object),
+                             "Avance (%)": pd.Series(dtype=float), "Estado actual": pd.Series(dtype=object)})
+    h = pd.read_csv(ruta, encoding="utf-8-sig")
+    h["Fecha"] = pd.to_datetime(h["Fecha"], dayfirst=True, errors="coerce")
+    h["Avance (%)"] = pd.to_numeric(h["Avance (%)"], errors="coerce")
+    if clave == "N°":
+        h[clave] = pd.to_numeric(h[clave], errors="coerce").astype("Int64")
+    return h.dropna(subset=["Fecha"])
+
+
+def guardar_instantanea(ruta: Path, df: pd.DataFrame, clave: str, fecha: date) -> int:
+    """Agrega (o reemplaza) la lectura de `fecha` en el historial. Devuelve filas totales."""
+    h = leer_historial(ruta, clave)
+    h = h[h["Fecha"].dt.date != fecha]
+    nuevo = df[[clave, "Avance (%)", "Estado actual"]].copy()
+    nuevo.insert(0, "Fecha", pd.Timestamp(fecha))
+    h = pd.concat([h, nuevo], ignore_index=True).sort_values(["Fecha", clave])
+    h.assign(Fecha=h["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(ruta, index=False, encoding="utf-8-sig")
+    return len(h)
+
+
+# ------------------------------------------------------------------ cargar
+def _fuente(nombre_secreto: str, local: Path):
+    url = secreto(nombre_secreto)
+    if url:
+        try:
+            return descargar(url), "drive", ""
+        except Exception as exc:      # noqa: BLE001
+            return local.read_bytes(), "local", f"No se pudo leer el archivo de Drive ({str(exc)[:80]}): se muestra la copia local."
+    return local.read_bytes(), "local", "Sin enlace al archivo de Drive: se muestra la copia local."
+
+
+def cargar() -> dict:
+    hoy = ahora_lima().date()
+    b100, f100, a100 = _fuente("MATRIZ_100DIAS_URL", LOCAL_100)
+    bfen, ffen, afen = _fuente("MATRIZ_FEN_URL", LOCAL_FEN)
+    m100, fen = leer_matriz_100(b100), leer_matriz_fen(bfen)
+    m100["Situación de plazo"] = [situacion_plazo(hoy, av if pd.notna(av) else None, ini, lim)
+                                  for av, ini, lim in zip(m100["Avance (%)"], m100["Fecha inicio"], m100["Fecha límite"])]
+    m100["Días para el límite"] = [(lim - hoy).days if lim else None for lim in m100["Fecha límite"]]
+    h100, hfen = leer_historial(HIST_100, "ID"), leer_historial(HIST_FEN, "N°")
+    # comparacion con la ultima instantanea anterior a hoy
+    for df, h, clave in ((m100, h100, "ID"), (fen, hfen, "N°")):
+        prev = h[h["Fecha"].dt.date < hoy]
+        if len(prev):
+            ult = prev[prev["Fecha"] == prev["Fecha"].max()].set_index(clave)
+            df["Avance anterior"] = df[clave].map(ult["Avance (%)"])
+            df["Estado anterior"] = df[clave].map(ult["Estado actual"])
+            df["Fecha anterior"] = prev["Fecha"].max().date()
+        else:
+            df["Avance anterior"], df["Estado anterior"], df["Fecha anterior"] = None, None, None
+        df["Cambió"] = [bool((pd.notna(a) and pd.notna(b) and a != b) or (pd.notna(ea) and str(e) != str(ea)))
+                        for a, b, e, ea in zip(df["Avance (%)"], df["Avance anterior"], df["Estado actual"], df["Estado anterior"])]
+    return {"m100": m100, "fen": fen, "hist100": h100, "histfen": hfen, "fuente100": f100, "fuentefen": ffen,
+            "avisos": [a for a in (a100, afen) if a], "leido": ahora_lima(), "hoy": hoy}

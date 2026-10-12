@@ -1,0 +1,34 @@
+# Cada lunes 06:00 (Lima) guarda la lectura de las dos matrices de Drive en
+# datos/historial_*.csv y la sube al repositorio: asi el dashboard dibuja la
+# evolucion semana a semana sin que nadie corra nada a mano.
+# Requiere en GitHub -> Settings -> Secrets and variables -> Actions:
+#   MATRIZ_100DIAS_URL  y  MATRIZ_FEN_URL  (los mismos enlaces de Drive que usa la app)
+name: Instantánea semanal de las matrices
+
+on:
+  schedule:
+    - cron: "0 11 * * 1"      # lunes 11:00 UTC = 06:00 Lima
+  workflow_dispatch:          # tambien se puede lanzar a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+jobs:
+  instantanea:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python snapshot.py
+        env:
+          MATRIZ_100DIAS_URL: ${{ secrets.MATRIZ_100DIAS_URL }}
+          MATRIZ_FEN_URL: ${{ secrets.MATRIZ_FEN_URL }}
+      - run: |
+          git config user.name "instantanea-semanal"
+          git config user.email "actions@users.noreply.github.com"
+          git add datos/historial_100dias.csv datos/historial_fen.csv
+          git diff --cached --quiet || git commit -m "Instantánea semanal $(date -u +%d/%m/%Y)"
+          git push
