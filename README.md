@@ -35,7 +35,7 @@ Si falta un enlace o falla la descarga, la app usa la copia de `datos/` y lo avi
 ## Evolución semanal
 
 `snapshot.py` guarda el avance y el estado de cada actividad con la fecha del
-día. El flujo de GitHub Actions lo corre cada lunes 06:00 (Lima) y sube el
+día. El flujo de GitHub Actions lo corre cada hora de lunes a viernes (07:00-19:00 Lima) y sube el
 resultado; requiere los dos enlaces como *secrets* del repositorio
 (Settings → Secrets and variables → Actions). También se puede correr a mano:
 `python snapshot.py` o `python snapshot.py 09/10/2026`.

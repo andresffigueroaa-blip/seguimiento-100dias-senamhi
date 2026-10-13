@@ -6,8 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from comun import (AMARILLO, AZUL, COLOR_ESTADO, COLOR_SIT, GRIS_TXT, MESES_ES, barras_avance, dona_estado,
-                   etiqueta, evolucion, excel, fecha, fecha_corta, fig_base, grafico, kpi, pct, por_direccion)
+from comun import (seccion_historia, tarjetas, AMARILLO, AZUL, COLOR_ESTADO, COLOR_SIT, GRIS_TXT, MESES_ES, barras_avance, dona_estado,
+                   etiqueta, evolucion, excel, fecha, fecha_corta, fig_base, grafico, pct, por_direccion)
 from datos import DIA_100, ESTADOS, INICIO_GOBIERNO, NOMBRE_DIR
 
 
@@ -34,17 +34,16 @@ def render(D: dict, filtros: dict) -> None:
     ant = v["Fecha anterior"].dropna().iloc[0] if v["Fecha anterior"].notna().any() else None
 
     # ---------------------------------------------------------------- KPIs
-    k = st.columns(6)
-    kpi(k[0], "Actividades", len(v), f"{int((v['Prioridad (MINAM)'] == 'Alta').sum())} de prioridad alta")
-    kpi(k[1], "Avance promedio", pct(v["Avance (%)"].mean()), "según la matriz MINAM")
-    kpi(k[2], "Completadas", int((v["Situación de plazo"] == "Completada").sum()), "avance al 100 %", COLOR_ESTADO["Completado"])
-    kpi(k[3], "En proceso", int((v["Estado actual"] == "En proceso").sum()), "según la dirección", COLOR_ESTADO["En proceso"])
     venc = int((v["Situación de plazo"] == "Fecha límite vencida").sum())
-    kpi(k[4], "Con fecha límite vencida", venc, "y avance menor a 100 %", COLOR_SIT["Fecha límite vencida"] if venc else AZUL)
     camb = int(v["Cambió"].sum())
-    kpi(k[5], "Actualizadas esta semana", f"{camb} / {len(v)}",
-        f"respecto al {fecha(ant)}" if ant else "sin corte anterior", AMARILLO if camb < len(v) else AZUL)
-    st.markdown("")
+    tarjetas([
+        ("Actividades", len(v), f"{int((v['Prioridad (MINAM)'] == 'Alta').sum())} de prioridad alta"),
+        ("Avance promedio", pct(v["Avance (%)"].mean()), "según la matriz MINAM"),
+        ("Completadas", int((v["Situación de plazo"] == "Completada").sum()), "avance al 100 %", COLOR_ESTADO["Completado"]),
+        ("En proceso", int((v["Estado actual"] == "En proceso").sum()), "según la dirección", COLOR_ESTADO["En proceso"]),
+        ("Con fecha límite vencida", venc, "y avance menor a 100 %", COLOR_SIT["Fecha límite vencida"] if venc else AZUL),
+        ("Actualizadas esta semana", f"{camb} / {len(v)}", f"respecto al {fecha(ant)}" if ant else "sin registro previo",
+         AMARILLO if camb < len(v) else AZUL)])
 
     # ------------------------------------------------- avance + estado
     a, b = st.columns([3, 1.3])
@@ -107,9 +106,11 @@ def render(D: dict, filtros: dict) -> None:
     # ------------------------------------------------ evolucion y direcciones
     a, b = st.columns([3, 2])
     with a:
-        evolucion(hist, v, "ID", hoy, "Avance semana a semana (color = dirección)")
+        evolucion(hist, v, "ID", D["ahora"], "Evolución del avance (color = dirección)")
     with b:
         por_direccion(v, "Avance promedio por dirección")
+
+    seccion_historia(hist, v, "ID", D["ahora"], "100")
 
     # ------------------------------------------------------------- fichas
     st.markdown("### Ficha de cada actividad")

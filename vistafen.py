@@ -6,8 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from comun import (AMARILLO, AZUL, COLOR_DIR, COLOR_ESTADO, barras_avance, dona_estado, etiqueta, evolucion, excel,
-                   fecha, grafico, kpi, pct, por_direccion)
+from comun import (seccion_historia, tarjetas, AMARILLO, AZUL, COLOR_DIR, COLOR_ESTADO, barras_avance, dona_estado, etiqueta, evolucion, excel,
+                   fecha, grafico, pct, por_direccion)
 from datos import ESTADOS_FEN, NOMBRE_DIR
 
 
@@ -32,17 +32,16 @@ def render(D: dict) -> None:
         return
     ant = v["Fecha anterior"].dropna().iloc[0] if v["Fecha anterior"].notna().any() else None
 
-    k = st.columns(6)
-    kpi(k[0], "Acciones prioritarias", len(v), f"{v['Dirección'].nunique()} direcciones")
-    kpi(k[1], "Implementadas", int((v["Estado actual"] == "Implementado").sum()), "según la dirección", COLOR_ESTADO["Implementado"])
-    kpi(k[2], "En proceso", int((v["Estado actual"] == "En proceso").sum()), "según la dirección", COLOR_ESTADO["En proceso"])
     riesgo = int(v["Estado actual"].isin(["En riesgo de retraso", "Sin iniciar"]).sum())
-    kpi(k[3], "En riesgo o sin iniciar", riesgo, "según la dirección", COLOR_ESTADO["En riesgo de retraso"] if riesgo else AZUL)
-    kpi(k[4], "Avance promedio", pct(v["Avance (%)"].mean()), f"{int(v['Avance (%)'].notna().sum())} con avance medible")
     camb = int(v["Cambió"].sum())
-    kpi(k[5], "Actualizadas esta semana", f"{camb} / {len(v)}", f"respecto al {fecha(ant)}" if ant else "sin corte anterior",
-        AMARILLO if camb < len(v) else AZUL)
-    st.markdown("")
+    tarjetas([
+        ("Acciones prioritarias", len(v), f"{v['Dirección'].nunique()} direcciones"),
+        ("Implementadas", int((v["Estado actual"] == "Implementado").sum()), "según la dirección", COLOR_ESTADO["Implementado"]),
+        ("En proceso", int((v["Estado actual"] == "En proceso").sum()), "según la dirección", COLOR_ESTADO["En proceso"]),
+        ("En riesgo o sin iniciar", riesgo, "según la dirección", COLOR_ESTADO["En riesgo de retraso"] if riesgo else AZUL),
+        ("Avance promedio", pct(v["Avance (%)"].mean()), f"{int(v['Avance (%)'].notna().sum())} con avance medible"),
+        ("Actualizadas esta semana", f"{camb} / {len(v)}", f"respecto al {fecha(ant)}" if ant else "sin registro previo",
+         AMARILLO if camb < len(v) else AZUL)])
 
     a, b = st.columns([3, 1.3])
     with a:
@@ -59,9 +58,11 @@ def render(D: dict) -> None:
 
     a, b = st.columns([3, 2])
     with a:
-        evolucion(hist, v, "N°", hoy, "Avance semana a semana (color = dirección)")
+        evolucion(hist, v, "N°", D["ahora"], "Evolución del avance (color = dirección)")
     with b:
         por_direccion(v, "Avance promedio por dirección")
+
+    seccion_historia(hist, v, "N°", D["ahora"], "fen")
 
     st.markdown("### Metas: lo comprometido y lo ejecutado")
     tabla = v[["N°", "Dirección", "Nombre corto", "Unidad", "Meta 2026", "Meta 2027", "Meta ejecutada", "Estado actual", "Avance (%)"]]

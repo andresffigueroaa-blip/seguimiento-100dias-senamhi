@@ -21,10 +21,11 @@ CSS = f"""
 <style>
 .block-container {{padding-top: 2.2rem; padding-bottom: 2rem; max-width: 1500px;}}
 html, body, [class*="css"] {{font-size: 16px;}}
-.kpi {{background:#fff;border-radius:12px;padding:16px 20px;border:1px solid {LINEA};border-left:6px solid {AZUL};min-height:108px;}}
-.kpi .l {{font-size:.9rem;color:{GRIS_TXT};}}
-.kpi .v {{font-size:2.3rem;font-weight:700;color:{AZUL};line-height:1.15;}}
-.kpi .s {{font-size:.9rem;color:{GRIS_TXT};}}
+.kpis {{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:14px;margin:4px 0 18px 0;}}
+.kpi {{background:#fff;border-radius:12px;padding:14px 18px;border:1px solid {LINEA};border-left:6px solid {AZUL};}}
+.kpi .l {{font-size:.9rem;color:{GRIS_TXT};line-height:1.25;word-break:normal;overflow-wrap:normal;hyphens:none;}}
+.kpi .v {{font-size:2.2rem;font-weight:700;color:{AZUL};line-height:1.15;white-space:nowrap;}}
+.kpi .s {{font-size:.85rem;color:{GRIS_TXT};line-height:1.25;word-break:normal;overflow-wrap:normal;}}
 .dia {{background:{AZUL};color:#fff;border-radius:12px;padding:14px 20px;text-align:center;}}
 .dia .n {{font-size:2.6rem;font-weight:800;color:{AMARILLO};line-height:1;}}
 .dia .t {{font-size:.95rem;margin-top:4px;}}
@@ -60,10 +61,16 @@ def fecha_corta(x) -> str:
     return f"{x.day} {MESES_ES[x.month - 1]}"
 
 
-def kpi(col, etiqueta, valor, sub="", color=AZUL) -> None:
-    col.markdown(f'<div class="kpi" style="border-left-color:{color}"><div class="l">{etiqueta}</div>'
-                 f'<div class="v" style="color:{color}">{valor}</div><div class="s">{sub}</div></div>',
-                 unsafe_allow_html=True)
+def tarjetas(items: list[tuple]) -> None:
+    """Fila de tarjetas KPI que se acomoda sola al ancho (no parte las palabras).
+    items: (etiqueta, valor, subtitulo[, color])."""
+    html = []
+    for it in items:
+        etq, val, sub = it[:3]
+        color = it[3] if len(it) > 3 and it[3] else AZUL
+        html.append(f'<div class="kpi" style="border-left-color:{color}"><div class="l">{etq}</div>'
+                    f'<div class="v" style="color:{color}">{val}</div><div class="s">{sub}</div></div>')
+    st.markdown(f'<div class="kpis">{"".join(html)}</div>', unsafe_allow_html=True)
 
 
 def etiqueta(texto: str, color: str) -> str:
@@ -119,27 +126,114 @@ def dona_estado(v: pd.DataFrame, orden: list[str], titulo: str, alto=330) -> Non
     grafico(fig, alto=alto)
 
 
-def evolucion(hist: pd.DataFrame, actual: pd.DataFrame, clave: str, hoy, titulo: str) -> None:
-    """Curva semana a semana: instantaneas del historial + la lectura de hoy."""
+def _serie(hist: pd.DataFrame, actual: pd.DataFrame, clave: str, ahora) -> pd.DataFrame:
+    """Historial de cambios + el valor de este momento (para que la linea llegue a hoy)."""
+    h = hist[hist[clave].isin(actual[clave])][["Fecha", clave, "Avance (%)", "Estado actual"]].copy()
+    vivo = actual[[clave, "Avance (%)", "Estado actual"]].assign(Fecha=pd.Timestamp(ahora))
+    return pd.concat([h, vivo], ignore_index=True).sort_values(["Fecha", clave])
+
+
+def evolucion(hist: pd.DataFrame, actual: pd.DataFrame, clave: str, ahora, titulo: str) -> None:
+    """Escalera de avance: cada escalon es una actualizacion registrada en la matriz."""
     import plotly.graph_objects as go
-    h = hist[hist[clave].isin(actual[clave]) & hist["Avance (%)"].notna()].copy()
-    vivo = actual[[clave, "Avance (%)"]].dropna().assign(Fecha=pd.Timestamp(hoy))
-    h = pd.concat([h[h["Fecha"].dt.date < hoy], vivo], ignore_index=True).sort_values("Fecha")
-    if h.empty:
-        st.info("Aún no hay instantáneas semanales para dibujar la evolución.")
+    h = _serie(hist, actual, clave, ahora).dropna(subset=["Avance (%)"])
+    if hist.empty or h.empty:
+        st.info("El registro empieza hoy: la curva se irá dibujando con cada actualización de la matriz.")
         return
     nombres = actual.set_index(clave)["Nombre corto"]
     dirs = actual.set_index(clave)["Dirección"]
     fig = go.Figure()
     for k, gg in h.groupby(clave):
         nom = f"{k}".replace("SENAMHI-", "")
-        fig.add_scatter(x=gg["Fecha"], y=gg["Avance (%)"], mode="lines+markers", name=nom,
-                        line=dict(width=2, color=COLOR_DIR.get(dirs.get(k), "#999")), marker=dict(size=8),
-                        hovertemplate=f"<b>{nombres.get(k, k)}</b><br>%{{x|%d/%m/%Y}}: %{{y:.0f}} %<extra></extra>")
-    fig.add_vline(x=pd.Timestamp(hoy), line=dict(color=AMARILLO, width=2, dash="dash"))
+        fig.add_scatter(x=gg["Fecha"], y=gg["Avance (%)"], mode="lines+markers", name=nom, line_shape="hv",
+                        line=dict(width=2, color=COLOR_DIR.get(dirs.get(k), "#999")), marker=dict(size=7),
+                        hovertemplate=f"<b>{nombres.get(k, k)}</b><br>%{{x|%d/%m/%Y %H:%M}}: %{{y:.0f}} %<extra></extra>")
+    lunes = pd.date_range(h["Fecha"].min().normalize() - pd.Timedelta(days=h["Fecha"].min().weekday()),
+                          pd.Timestamp(ahora) + pd.Timedelta(days=7), freq="W-MON")
+    for l in lunes:
+        fig.add_vline(x=l, line=dict(color="#C9D1DA", width=1, dash="dot"))
+    fig.add_vline(x=pd.Timestamp(ahora), line=dict(color=AMARILLO, width=2, dash="dash"))
+    x0 = min(h["Fecha"].min(), pd.Timestamp(ahora) - pd.Timedelta(days=6))
     fig.update_layout(title=titulo, yaxis=dict(range=[0, 108], ticksuffix=" %", gridcolor="#EEF1F6"),
-                      xaxis=dict(tickformat="%d/%m", gridcolor="#EEF1F6"))
+                      xaxis=dict(tickformat="%d/%m", gridcolor="#EEF1F6", range=[x0 - pd.Timedelta(hours=12),
+                                                                               pd.Timestamp(ahora) + pd.Timedelta(days=1)]))
     grafico(fig, alto=400)
+    st.caption("Cada escalón es una actualización guardada de la matriz en Drive (se revisa cada hora en días hábiles). "
+               "Las líneas punteadas marcan el inicio de cada semana.")
+
+
+def tabla_semanal(hist: pd.DataFrame, actual: pd.DataFrame, clave: str, ahora) -> pd.DataFrame:
+    """Avance al cierre de cada semana (domingo) desde que empezo el registro; la semana en curso, al dia de hoy."""
+    h = _serie(hist, actual, clave, ahora)
+    ini = h["Fecha"].min().normalize()
+    ini = ini - pd.Timedelta(days=ini.weekday())
+    lunes = pd.date_range(ini, pd.Timestamp(ahora), freq="W-MON")
+    filas = []
+    for k, gg in h.groupby(clave):
+        gg = gg.sort_values("Fecha")
+        fila = {clave: k}
+        for l in lunes:
+            corte = min(l + pd.Timedelta(days=7), pd.Timestamp(ahora) + pd.Timedelta(minutes=1))
+            prev = gg[gg["Fecha"] < corte]
+            fila[f"Sem. {l:%d/%m}"] = prev["Avance (%)"].iloc[-1] if len(prev) else None
+        filas.append(fila)
+    t = pd.DataFrame(filas)
+    t.insert(1, "Actividad", t[clave].map(actual.set_index(clave)["Nombre corto"]))
+    orden = {k: i for i, k in enumerate(actual[clave])}
+    return t.sort_values(clave, key=lambda c: c.map(orden)).reset_index(drop=True)
+
+
+def registro_cambios(hist: pd.DataFrame, actual: pd.DataFrame, clave: str) -> pd.DataFrame:
+    """Una fila por actualizacion: que cambio (avance, estado, detalle) y cuando."""
+    h = hist[hist[clave].isin(actual[clave])].sort_values([clave, "Fecha"]).copy()
+    filas = []
+    for k, gg in h.groupby(clave):
+        prev = None
+        for _, r in gg.iterrows():
+            if prev is None:
+                prev = r
+                continue
+            cambios = []
+            if not (pd.isna(r["Avance (%)"]) and pd.isna(prev["Avance (%)"])) and r["Avance (%)"] != prev["Avance (%)"]:
+                cambios.append(f"Avance {pct(prev['Avance (%)'])} → {pct(r['Avance (%)'])}")
+            if str(r["Estado actual"]) != str(prev["Estado actual"]):
+                cambios.append(f"Estado «{prev['Estado actual'] or '—'}» → «{r['Estado actual'] or '—'}»")
+            if str(r.get("Detalle", "")) != str(prev.get("Detalle", "")):
+                cambios.append("Detalle actualizado")
+            filas.append({"Fecha": r["Fecha"], clave: k, "Qué cambió": " · ".join(cambios) or "—",
+                          "Avance (%)": r["Avance (%)"], "Detalle": r.get("Detalle", "")})
+            prev = r
+    t = pd.DataFrame(filas, columns=["Fecha", clave, "Qué cambió", "Avance (%)", "Detalle"])
+    if len(t):
+        t.insert(2, "Actividad", t[clave].map(actual.set_index(clave)["Nombre corto"]))
+    return t.sort_values("Fecha", ascending=False).reset_index(drop=True)
+
+
+def seccion_historia(hist: pd.DataFrame, actual: pd.DataFrame, clave: str, ahora, key: str) -> None:
+    """Avance semana a semana (tabla) y registro de cambios."""
+    st.markdown("### Avance semana a semana")
+    if hist.empty:
+        st.info("El registro empieza con la primera lectura de la matriz.")
+        return
+    inicio = hist["Fecha"].min()
+    st.caption(f"Avance de cada actividad al cierre de cada semana, según la matriz en Drive. "
+               f"Registro desde el {inicio:%d/%m/%Y %H:%M}; la última columna es la semana en curso, al día de hoy.")
+    t = tabla_semanal(hist, actual, clave, ahora)
+    semanas = [c for c in t.columns if c.startswith("Sem.")]
+    st.dataframe(t, width="stretch", hide_index=True, height=min(560, 36 * len(t) + 42),
+                 column_config={"Actividad": st.column_config.TextColumn(width="large"),
+                                **{c: st.column_config.NumberColumn(c, format="%d %%") for c in semanas}})
+    st.markdown("### Registro de cambios")
+    r = registro_cambios(hist, actual, clave)
+    if r.empty:
+        st.caption(f"Sin cambios desde la línea de partida del {inicio:%d/%m/%Y}. Cada vez que una dirección actualice "
+                   "su fila en Drive aparecerá aquí, con fecha y hora.")
+    else:
+        st.dataframe(r, width="stretch", hide_index=True, height=min(480, 36 * len(r) + 42), key=f"reg_{key}",
+                     column_config={"Fecha": st.column_config.DatetimeColumn("Fecha y hora", format="DD/MM/YYYY HH:mm"),
+                                    "Actividad": st.column_config.TextColumn(width="medium"),
+                                    "Avance (%)": st.column_config.NumberColumn("Avance", format="%d %%"),
+                                    "Detalle": st.column_config.TextColumn("Detalle registrado", width="large")})
 
 
 def por_direccion(v: pd.DataFrame, titulo: str) -> None:

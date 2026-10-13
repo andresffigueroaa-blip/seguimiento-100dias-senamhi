@@ -289,27 +289,69 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
 
 
 # -------------------------------------------------------------- historial
+# Registro de cambios: una fila cada vez que cambia el avance, el estado o el
+# detalle de una actividad (snapshot.py revisa Drive cada hora). La primera
+# lectura (13/10/2026) es la linea de partida.
+CAMPOS_HIST = ["Avance (%)", "Estado actual", "Detalle"]
+
+
+def ahora_local() -> datetime:
+    return ahora_lima().replace(tzinfo=None, second=0, microsecond=0)
+
+
 def leer_historial(ruta: Path, clave: str) -> pd.DataFrame:
     if not ruta.exists():
         return pd.DataFrame({"Fecha": pd.Series(dtype="datetime64[ns]"), clave: pd.Series(dtype=object),
-                             "Avance (%)": pd.Series(dtype=float), "Estado actual": pd.Series(dtype=object)})
-    h = pd.read_csv(ruta, encoding="utf-8-sig")
-    h["Fecha"] = pd.to_datetime(h["Fecha"], dayfirst=True, errors="coerce")
+                             "Avance (%)": pd.Series(dtype=float), "Estado actual": pd.Series(dtype=object),
+                             "Detalle": pd.Series(dtype=object)})
+    h = pd.read_csv(ruta, encoding="utf-8-sig", dtype={"Estado actual": str, "Detalle": str})
+    h["Fecha"] = pd.to_datetime(h["Fecha"], format="%d/%m/%Y %H:%M", errors="coerce")
     h["Avance (%)"] = pd.to_numeric(h["Avance (%)"], errors="coerce")
+    for c in ("Estado actual", "Detalle"):
+        h[c] = h[c].fillna("") if c in h.columns else ""
     if clave == "N°":
         h[clave] = pd.to_numeric(h[clave], errors="coerce").astype("Int64")
-    return h.dropna(subset=["Fecha"])
+    return h.dropna(subset=["Fecha"]).sort_values(["Fecha", clave]).reset_index(drop=True)
 
 
-def guardar_instantanea(ruta: Path, df: pd.DataFrame, clave: str, fecha: date) -> int:
-    """Agrega (o reemplaza) la lectura de `fecha` en el historial. Devuelve filas totales."""
+def _igual(a, b) -> bool:
+    na, nb = a is None or (isinstance(a, float) and pd.isna(a)), b is None or (isinstance(b, float) and pd.isna(b))
+    if isinstance(a, (int, float)) or isinstance(b, (int, float)):
+        if na and nb:
+            return True
+        if na or nb:
+            return False
+        return abs(float(a) - float(b)) < 0.05
+    return ("" if na else str(a)) == ("" if nb else str(b))
+
+
+def ultimo_registro(h: pd.DataFrame, clave: str, hasta=None) -> pd.DataFrame:
+    """Ultimo valor conocido de cada actividad (opcionalmente antes de `hasta`)."""
+    if hasta is not None:
+        h = h[h["Fecha"] < hasta]
+    return h.sort_values("Fecha").groupby(clave).last()
+
+
+def registrar_cambios(ruta: Path, df: pd.DataFrame, clave: str, cuando: datetime) -> list:
+    """Agrega una fila por cada actividad que cambio desde su ultimo registro. Devuelve las claves que cambiaron."""
     h = leer_historial(ruta, clave)
-    h = h[h["Fecha"].dt.date != fecha]
-    nuevo = df[[clave, "Avance (%)", "Estado actual"]].copy()
-    nuevo.insert(0, "Fecha", pd.Timestamp(fecha))
-    h = pd.concat([h, nuevo], ignore_index=True).sort_values(["Fecha", clave])
-    h.assign(Fecha=h["Fecha"].dt.strftime("%d/%m/%Y")).to_csv(ruta, index=False, encoding="utf-8-sig")
-    return len(h)
+    ult = ultimo_registro(h, clave)
+    nuevos = []
+    for _, r in df.iterrows():
+        k = r[clave]
+        if k in ult.index and all(_igual(r.get(c, ""), ult.loc[k, c]) for c in CAMPOS_HIST):
+            continue
+        nuevos.append({"Fecha": cuando, clave: k, "Avance (%)": r["Avance (%)"],
+                       "Estado actual": r["Estado actual"], "Detalle": r.get("Detalle", "")})
+    if nuevos:
+        h = pd.concat([h, pd.DataFrame(nuevos)], ignore_index=True).sort_values(["Fecha", clave])
+        h.assign(Fecha=h["Fecha"].dt.strftime("%d/%m/%Y %H:%M")).to_csv(ruta, index=False, encoding="utf-8-sig")
+    return [n[clave] for n in nuevos]
+
+
+def inicio_semana(d) -> datetime:
+    d = pd.Timestamp(d).normalize()
+    return (d - pd.Timedelta(days=d.weekday())).to_pydatetime()
 
 
 # ------------------------------------------------------------------ cargar
@@ -324,7 +366,8 @@ def _fuente(nombre_secreto: str, local: Path):
 
 
 def cargar() -> dict:
-    hoy = ahora_lima().date()
+    ahora = ahora_local()
+    hoy = ahora.date()
     b100, f100, a100 = _fuente("MATRIZ_100DIAS_URL", LOCAL_100)
     bfen, ffen, afen = _fuente("MATRIZ_FEN_URL", LOCAL_FEN)
     m100, fen = leer_matriz_100(b100), leer_matriz_fen(bfen)
@@ -332,17 +375,19 @@ def cargar() -> dict:
                                   for av, ini, lim in zip(m100["Avance (%)"], m100["Fecha inicio"], m100["Fecha límite"])]
     m100["Días para el límite"] = [(lim - hoy).days if lim else None for lim in m100["Fecha límite"]]
     h100, hfen = leer_historial(HIST_100, "ID"), leer_historial(HIST_FEN, "N°")
-    # comparacion con la ultima instantanea anterior a hoy
+    lunes = inicio_semana(hoy)
+    # "esta semana": se compara con lo que habia antes del lunes; si el registro
+    # empezo esta semana, con la primera lectura (linea de partida).
     for df, h, clave in ((m100, h100, "ID"), (fen, hfen, "N°")):
-        prev = h[h["Fecha"].dt.date < hoy]
-        if len(prev):
-            ult = prev[prev["Fecha"] == prev["Fecha"].max()].set_index(clave)
-            df["Avance anterior"] = df[clave].map(ult["Avance (%)"])
-            df["Estado anterior"] = df[clave].map(ult["Estado actual"])
-            df["Fecha anterior"] = prev["Fecha"].max().date()
-        else:
-            df["Avance anterior"], df["Estado anterior"], df["Fecha anterior"] = None, None, None
-        df["Cambió"] = [bool((pd.notna(a) and pd.notna(b) and a != b) or (pd.notna(ea) and str(e) != str(ea)))
-                        for a, b, e, ea in zip(df["Avance (%)"], df["Avance anterior"], df["Estado actual"], df["Estado anterior"])]
+        ref = ultimo_registro(h, clave, hasta=lunes)
+        fecha_ref = h.loc[h["Fecha"] < lunes, "Fecha"].max() if len(ref) else None
+        if not len(ref) and len(h):
+            ref = h.sort_values("Fecha").groupby(clave).first()
+            fecha_ref = h["Fecha"].min()
+        df["Avance anterior"] = df[clave].map(ref["Avance (%)"]) if len(ref) else None
+        df["Estado anterior"] = df[clave].map(ref["Estado actual"]) if len(ref) else None
+        df["Fecha anterior"] = fecha_ref if fecha_ref is not None and pd.notna(fecha_ref) else None
+        df["Cambió"] = [bool(k in ref.index and not all(_igual(r.get(c, ""), ref.loc[k, c]) for c in CAMPOS_HIST))
+                        for k, (_, r) in zip(df[clave], df.iterrows())]
     return {"m100": m100, "fen": fen, "hist100": h100, "histfen": hfen, "fuente100": f100, "fuentefen": ffen,
-            "avisos": [a for a in (a100, afen) if a], "leido": ahora_lima(), "hoy": hoy}
+            "avisos": [a for a in (a100, afen) if a], "leido": ahora_lima(), "hoy": hoy, "ahora": ahora}

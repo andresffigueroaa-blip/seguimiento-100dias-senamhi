@@ -1,30 +1,27 @@
 # -*- coding: utf-8 -*-
-"""Guarda la lectura de hoy de las dos matrices en datos/historial_*.csv.
+"""Revisa las dos matrices de Drive y guarda en datos/historial_*.csv cada cambio.
 
-    python snapshot.py            # fecha de hoy (hora de Lima)
-    python snapshot.py 09/10/2026 # otra fecha (p. ej. para reconstruir)
+    python snapshot.py
 
-Se corre cada lunes (a mano o con el flujo de GitHub Actions del repositorio)
-y da la curva semana a semana del dashboard. Lee de Drive si hay enlaces en
-secrets/variables de entorno; si no, de las copias de datos/.
+Se corre cada hora en dias habiles (GitHub Actions, registro_cambios.yml).
+Solo agrega filas para las actividades cuyo avance, estado o detalle cambio
+desde su ultimo registro; si nada cambio, no toca los archivos.
 """
 from __future__ import annotations
-
-import sys
-from datetime import datetime
 
 import datos
 
 
 def main() -> None:
-    fecha = datetime.strptime(sys.argv[1], "%d/%m/%Y").date() if len(sys.argv) > 1 else datos.ahora_lima().date()
     D = datos.cargar()
     for aviso in D["avisos"]:
         print("aviso:", aviso)
-    n1 = datos.guardar_instantanea(datos.HIST_100, D["m100"], "ID", fecha)
-    n2 = datos.guardar_instantanea(datos.HIST_FEN, D["fen"], "N°", fecha)
-    print(f"{fecha:%d/%m/%Y}: 100 días {len(D['m100'])} actividades ({n1} filas en historial) · "
-          f"FEN {len(D['fen'])} acciones ({n2} filas en historial)")
+    if D["fuente100"] != "drive" or D["fuentefen"] != "drive":
+        raise SystemExit("No se leyó Drive: no se registra nada para no mezclar la copia local con el historial.")
+    ahora = datos.ahora_local()
+    c1 = datos.registrar_cambios(datos.HIST_100, D["m100"], "ID", ahora)
+    c2 = datos.registrar_cambios(datos.HIST_FEN, D["fen"], "N°", ahora)
+    print(f"{ahora:%d/%m/%Y %H:%M}: 100 días {len(c1)} cambios {c1} · FEN {len(c2)} cambios {c2}")
 
 
 if __name__ == "__main__":
