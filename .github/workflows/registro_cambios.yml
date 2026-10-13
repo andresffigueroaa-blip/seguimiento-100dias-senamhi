@@ -1,8 +1,9 @@
 # Revisa las dos matrices de Drive cada hora (lunes a viernes, 07:00-19:00 Lima)
 # y guarda en datos/historial_*.csv cada cambio de avance, estado o detalle.
 # Asi el dashboard muestra la evolucion semana a semana y el registro de cambios.
-# Requiere en GitHub -> Settings -> Secrets and variables -> Actions:
-#   MATRIZ_100DIAS_URL  y  MATRIZ_FEN_URL  (los mismos enlaces de Drive que usa la app)
+# Los enlaces de los archivos de Drive van aqui abajo (son archivos compartidos
+# con 'cualquier persona con el enlace'). Si algun dia cambian, basta editar
+# este archivo o definir MATRIZ_100DIAS_URL / MATRIZ_FEN_URL como secrets del repo.
 name: Registro de cambios de las matrices
 
 on:
@@ -30,8 +31,8 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python snapshot.py
         env:
-          MATRIZ_100DIAS_URL: ${{ secrets.MATRIZ_100DIAS_URL }}
-          MATRIZ_FEN_URL: ${{ secrets.MATRIZ_FEN_URL }}
+          MATRIZ_100DIAS_URL: ${{ secrets.MATRIZ_100DIAS_URL || 'https://drive.google.com/file/d/1TwD_YHGgUR_aossUkBO0MTir0o0_fCcI/view' }}
+          MATRIZ_FEN_URL: ${{ secrets.MATRIZ_FEN_URL || 'https://drive.google.com/file/d/1ct7JMGPEvOhJBI54CVTiKlmvuGt1rhDh/view' }}
       - name: Guardar cambios en el repositorio
         run: |
           git config user.name "registro-de-cambios"
