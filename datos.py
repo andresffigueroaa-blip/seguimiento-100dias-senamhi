@@ -285,7 +285,22 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
             "Estado actual": estado, "Avance (%)": av, "Avance (fuente)": fuente, "Detalle": det,
             "Evidencia": evid, "Enlaces": re.findall(r"https?://[^\s,;)]+", evid),
             "Nombre corto": (prod or act)[:70]})
-    return pd.DataFrame(out)
+    df = pd.DataFrame(out)
+    df["Clave"] = clave_estable(df["Dirección"], df["Producto"].where(df["Producto"] != "", df["Actividad"]))
+    df["Etiqueta"] = df["N°"].astype(str) + " · " + df["Dirección"]
+    return df
+
+
+def clave_estable(direccion: pd.Series, texto: pd.Series) -> list[str]:
+    """Identificador que no cambia si se renumeran las filas: direccion + inicio del producto.
+    Si dos filas coinciden, se agrega -2, -3..."""
+    vistas: dict[str, int] = {}
+    out = []
+    for d, t in zip(direccion, texto):
+        base = f"{d}-" + re.sub(r"[^a-z0-9]+", "-", plano(t)).strip("-")[:48]
+        vistas[base] = vistas.get(base, 0) + 1
+        out.append(base if vistas[base] == 1 else f"{base}-{vistas[base]}")
+    return out
 
 
 # -------------------------------------------------------------- historial
@@ -304,13 +319,11 @@ def leer_historial(ruta: Path, clave: str) -> pd.DataFrame:
         return pd.DataFrame({"Fecha": pd.Series(dtype="datetime64[ns]"), clave: pd.Series(dtype=object),
                              "Avance (%)": pd.Series(dtype=float), "Estado actual": pd.Series(dtype=object),
                              "Detalle": pd.Series(dtype=object)})
-    h = pd.read_csv(ruta, encoding="utf-8-sig", dtype={"Estado actual": str, "Detalle": str})
+    h = pd.read_csv(ruta, encoding="utf-8-sig", dtype={clave: str, "Estado actual": str, "Detalle": str})
     h["Fecha"] = pd.to_datetime(h["Fecha"], format="%d/%m/%Y %H:%M", errors="coerce")
     h["Avance (%)"] = pd.to_numeric(h["Avance (%)"], errors="coerce")
     for c in ("Estado actual", "Detalle"):
         h[c] = h[c].fillna("") if c in h.columns else ""
-    if clave == "N°":
-        h[clave] = pd.to_numeric(h[clave], errors="coerce").astype("Int64")
     return h.dropna(subset=["Fecha"]).sort_values(["Fecha", clave]).reset_index(drop=True)
 
 
@@ -374,11 +387,12 @@ def cargar() -> dict:
     m100["Situación de plazo"] = [situacion_plazo(hoy, av if pd.notna(av) else None, ini, lim)
                                   for av, ini, lim in zip(m100["Avance (%)"], m100["Fecha inicio"], m100["Fecha límite"])]
     m100["Días para el límite"] = [(lim - hoy).days if lim else None for lim in m100["Fecha límite"]]
-    h100, hfen = leer_historial(HIST_100, "ID"), leer_historial(HIST_FEN, "N°")
+    m100["Etiqueta"] = m100["ID"].str.replace("SENAMHI-", "", regex=False)
+    h100, hfen = leer_historial(HIST_100, "ID"), leer_historial(HIST_FEN, "Clave")
     lunes = inicio_semana(hoy)
     # "esta semana": se compara con lo que habia antes del lunes; si el registro
     # empezo esta semana, con la primera lectura (linea de partida).
-    for df, h, clave in ((m100, h100, "ID"), (fen, hfen, "N°")):
+    for df, h, clave in ((m100, h100, "ID"), (fen, hfen, "Clave")):
         ref = ultimo_registro(h, clave, hasta=lunes)
         fecha_ref = h.loc[h["Fecha"] < lunes, "Fecha"].max() if len(ref) else None
         if not len(ref) and len(h):

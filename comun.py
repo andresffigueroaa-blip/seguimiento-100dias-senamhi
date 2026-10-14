@@ -140,11 +140,12 @@ def evolucion(hist: pd.DataFrame, actual: pd.DataFrame, clave: str, ahora, titul
     if hist.empty or h.empty:
         st.info("El registro empieza hoy: la curva se irá dibujando con cada actualización de la matriz.")
         return
-    nombres = actual.set_index(clave)["Nombre corto"]
-    dirs = actual.set_index(clave)["Dirección"]
+    act = actual.drop_duplicates(clave).set_index(clave)
+    nombres, dirs = act["Nombre corto"], act["Dirección"]
+    etq = act["Etiqueta"] if "Etiqueta" in act.columns else pd.Series(act.index, index=act.index)
     fig = go.Figure()
     for k, gg in h.groupby(clave):
-        nom = f"{k}".replace("SENAMHI-", "")
+        nom = str(etq.get(k, k))
         fig.add_scatter(x=gg["Fecha"], y=gg["Avance (%)"], mode="lines+markers", name=nom, line_shape="hv",
                         line=dict(width=2, color=COLOR_DIR.get(dirs.get(k), "#999")), marker=dict(size=7),
                         hovertemplate=f"<b>{nombres.get(k, k)}</b><br>%{{x|%d/%m/%Y %H:%M}}: %{{y:.0f}} %<extra></extra>")
@@ -178,9 +179,14 @@ def tabla_semanal(hist: pd.DataFrame, actual: pd.DataFrame, clave: str, ahora) -
             fila[f"Sem. {l:%d/%m}"] = prev["Avance (%)"].iloc[-1] if len(prev) else None
         filas.append(fila)
     t = pd.DataFrame(filas)
-    t.insert(1, "Actividad", t[clave].map(actual.set_index(clave)["Nombre corto"]))
+    act = actual.drop_duplicates(clave).set_index(clave)
+    t.insert(1, "Actividad", t[clave].map(act["Nombre corto"]))
     orden = {k: i for i, k in enumerate(actual[clave])}
-    return t.sort_values(clave, key=lambda c: c.map(orden)).reset_index(drop=True)
+    t = t.sort_values(clave, key=lambda c: c.map(orden)).reset_index(drop=True)
+    if "Etiqueta" in act.columns:
+        t[clave] = t[clave].map(act["Etiqueta"])
+        t = t.rename(columns={clave: "N°"})
+    return t
 
 
 def registro_cambios(hist: pd.DataFrame, actual: pd.DataFrame, clave: str) -> pd.DataFrame:
@@ -205,7 +211,11 @@ def registro_cambios(hist: pd.DataFrame, actual: pd.DataFrame, clave: str) -> pd
             prev = r
     t = pd.DataFrame(filas, columns=["Fecha", clave, "Qué cambió", "Avance (%)", "Detalle"])
     if len(t):
-        t.insert(2, "Actividad", t[clave].map(actual.set_index(clave)["Nombre corto"]))
+        act = actual.drop_duplicates(clave).set_index(clave)
+        t.insert(2, "Actividad", t[clave].map(act["Nombre corto"]))
+        if "Etiqueta" in act.columns:
+            t[clave] = t[clave].map(act["Etiqueta"])
+            t = t.rename(columns={clave: "N°"})
     return t.sort_values("Fecha", ascending=False).reset_index(drop=True)
 
 

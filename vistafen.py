@@ -58,11 +58,11 @@ def render(D: dict) -> None:
 
     a, b = st.columns([3, 2])
     with a:
-        evolucion(hist, v, "N°", D["ahora"], "Evolución del avance (color = dirección)")
+        evolucion(hist, v, "Clave", D["ahora"], "Evolución del avance (color = dirección)")
     with b:
         por_direccion(v, "Avance promedio por dirección")
 
-    seccion_historia(hist, v, "N°", D["ahora"], "fen")
+    seccion_historia(hist, v, "Clave", D["ahora"], "fen")
 
     st.markdown("### Metas: lo comprometido y lo ejecutado")
     tabla = v[["N°", "Dirección", "Nombre corto", "Unidad", "Meta 2026", "Meta 2027", "Meta ejecutada", "Estado actual", "Avance (%)"]]
@@ -94,5 +94,5 @@ def render(D: dict) -> None:
                 cols = st.columns(min(len(r["Enlaces"]), 4))
                 for i, u in enumerate(r["Enlaces"][:4]):
                     cols[i].link_button(f"Abrir evidencia {i + 1}", u, icon=":material/open_in_new:", width="stretch")
-    st.download_button("Descargar en Excel", excel({"FEN": v.drop(columns=["Enlaces"]), "Historial": hist[hist["N°"].isin(v["N°"])]}),
+    st.download_button("Descargar en Excel", excel({"FEN": v.drop(columns=["Enlaces"]), "Historial": hist[hist["Clave"].isin(v["Clave"])]}),
                        f"acciones_fen_{hoy:%Y%m%d}.xlsx", icon=":material/download:", key="xfen")
