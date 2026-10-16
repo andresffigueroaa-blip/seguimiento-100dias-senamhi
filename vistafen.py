@@ -39,7 +39,8 @@ def render(D: dict) -> None:
         ("Implementadas", int((v["Estado actual"] == "Implementado").sum()), "según la dirección", COLOR_ESTADO["Implementado"]),
         ("En proceso", int((v["Estado actual"] == "En proceso").sum()), "según la dirección", COLOR_ESTADO["En proceso"]),
         ("En riesgo o sin iniciar", riesgo, "según la dirección", COLOR_ESTADO["En riesgo de retraso"] if riesgo else AZUL),
-        ("Avance promedio", pct(v["Avance (%)"].mean()), f"{int(v['Avance (%)'].notna().sum())} con avance medible"),
+        ("Avance operativo promedio", pct(v["Avance (%)"].mean()), "lo que reporta cada dirección"),
+        ("Avance de la meta promedio", pct(v["Avance de la meta (%)"].mean()), "meta ejecutada / meta 2026"),
         ("Actualizadas esta semana", f"{camb} / {len(v)}", f"respecto al {fecha(ant)}" if ant else "sin registro previo",
          AMARILLO if camb < len(v) else AZUL)])
 
@@ -47,10 +48,11 @@ def render(D: dict) -> None:
     with a:
         etq = v["N°"].astype(str) + " · " + v["Dirección"] + "  " + v["Nombre corto"].astype(str)
         grafico(barras_avance(v, etq, "% de avance por acción (color = estado actual)",
-                              ["Estado actual", "Meta 2026", "Meta ejecutada", "Avance (fuente)"]),
+                              ["Estado actual", "Avance de la meta (%)", "Meta 2026", "Meta ejecutada", "Fecha de reporte"]),
                 alto=max(400, 34 * len(v) + 120))
-        st.caption("El % sale de «Meta ejecutada / Meta 2026» cuando ambas son números; si no, del porcentaje que la "
-                   "dirección escribió en el detalle; y 100 % cuando declara «Implementado». La fuente se ve al pasar el mouse.")
+        st.caption("La barra es el «avance operativo de las labores de implementación» que cada dirección reporta cada "
+                   "semana. El avance de la meta (meta ejecutada / meta 2026) solo marca 0 % o 100 % cuando la meta es una "
+                   "unidad, por eso se muestra aparte, en la tabla de metas y al pasar el mouse.")
     with b:
         dona_estado(v, ESTADOS_FEN, "Estado actual (lo declara cada dirección)")
         g = v.groupby("Dirección").size()
@@ -65,10 +67,13 @@ def render(D: dict) -> None:
     seccion_historia(hist, v, "Clave", D["ahora"], "fen")
 
     st.markdown("### Metas: lo comprometido y lo ejecutado")
-    tabla = v[["N°", "Dirección", "Nombre corto", "Unidad", "Meta 2026", "Meta 2027", "Meta ejecutada", "Estado actual", "Avance (%)"]]
+    tabla = v[["N°", "Dirección", "Nombre corto", "Unidad", "Meta 2026", "Meta 2027", "Meta ejecutada", "Avance de la meta (%)",
+               "Avance (%)", "Fecha de reporte", "Estado actual"]]
     st.dataframe(tabla, width="stretch", hide_index=True, height=min(520, 40 * len(tabla) + 60),
                  column_config={"Nombre corto": st.column_config.TextColumn("Producto / entregable", width="large"),
-                                "Avance (%)": st.column_config.ProgressColumn("Avance", format="%d %%", min_value=0, max_value=100)})
+                                "Avance de la meta (%)": st.column_config.ProgressColumn("Avance de la meta (C/A)", format="%d %%",
+                                                                                         min_value=0, max_value=100),
+                                "Avance (%)": st.column_config.ProgressColumn("Avance operativo", format="%d %%", min_value=0, max_value=100)})
 
     st.markdown("### Ficha de cada acción")
     st.caption("Todo lo que trae la matriz FEN, tal como la llena cada dirección, con sus evidencias.")
@@ -80,6 +85,8 @@ def render(D: dict) -> None:
                         + (etiqueta("Actualizada esta semana", AMARILLO) if r["Cambió"] else ""), unsafe_allow_html=True)
             if pd.notna(r["Avance (%)"]):
                 st.progress(min(int(r["Avance (%)"]), 100), text=f"Avance: {pct(r['Avance (%)'])} ({r['Avance (fuente)']})")
+            st.caption(f"Avance de la meta (ejecutada / meta 2026): {pct(r['Avance de la meta (%)'])} · "
+                       f"Fecha de reporte: {r['Fecha de reporte'] or '—'}")
             c1, c2 = st.columns(2)
             c1.markdown(f"**Actividad:** {r['Actividad']}  \n**Objetivo:** {r['Objetivo'] or '—'}  \n"
                         f"**Producto / entregable:** {r['Producto'] or '—'}")

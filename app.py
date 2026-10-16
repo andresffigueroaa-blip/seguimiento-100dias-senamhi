@@ -10,12 +10,37 @@ snapshot.py.
 from __future__ import annotations
 
 import hmac
+import importlib
+import os
+import sys
+from pathlib import Path
 
 import streamlit as st
 
-import vista100
-import vistafen
-from comun import CSS, b64
+
+def recargar_modulos_cambiados() -> None:
+    """Streamlit Cloud baja los archivos de cada push, pero deja en memoria los módulos ya
+    importados (datos, comun, vistas). Se recargan los de esta carpeta que cambiaron, en orden
+    de dependencia."""
+    base = os.path.normcase(str(Path(__file__).resolve().parent))
+    vistos = getattr(sys, "_seg_mtimes", None)
+    orden = {"datos": 0, "comun": 1}
+    propios = sorted((n for n, m in list(sys.modules.items()) if n != "__main__" and getattr(m, "__file__", None)
+                      and os.path.normcase(os.path.abspath(m.__file__)).startswith(base)),
+                     key=lambda n: (orden.get(n, 2), n))
+    actuales = {}
+    for n in propios:
+        actuales[n] = os.path.getmtime(sys.modules[n].__file__)
+        if vistos is None or vistos.get(n) != actuales[n]:
+            importlib.reload(sys.modules[n])
+    sys._seg_mtimes = actuales
+
+
+recargar_modulos_cambiados()
+
+import vista100  # noqa: E402
+import vistafen  # noqa: E402
+from comun import CSS, b64  # noqa: E402
 from datos import DIA_100, ESTADOS, INICIO_GOBIERNO, cargar, secreto
 
 st.set_page_config(page_title="Seguimiento 100 días y FEN · SENAMHI", page_icon="assets/logo_senamhi.png",

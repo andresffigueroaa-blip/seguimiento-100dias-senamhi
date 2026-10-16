@@ -227,6 +227,20 @@ def _num_txt(v) -> str:
     return f"{x:,.0f}".replace(",", " ") if x == int(x) else f"{x:,.2f}".replace(",", " ")
 
 
+def _porcentaje(v):
+    """Celda con formato de porcentaje (0,98) o escrita como 98 o «98 %» -> 98.0."""
+    x = numero(v)
+    if x is None:
+        return None
+    if not (isinstance(v, str) and "%" in v) and abs(x) <= 1:
+        x *= 100
+    return round(min(max(x, 0.0), 100.0), 1)
+
+
+def _fecha_txt(v) -> str:
+    return v.strftime("%d/%m/%Y") if hasattr(v, "strftime") else texto(v)
+
+
 def _estado(v, lista) -> str:
     p = plano(v)
     if not p:
@@ -253,7 +267,9 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
          "objetivo": _col(cab, "objetivo"), "actividad": _col(cab, "actividad"), "producto": _col(cab, "producto"),
          "unidad": _col(cab, "unidad"), "meta26": _col(cab, "meta al cierre", "meta 2026", "meta"),
          "meta27": _col(cab, "meta al 2027"), "ejecutada": _col(cab, "meta ejecutada"), "estado": _col(cab, "estado"),
-         "detalle": _col(cab, "detalle"), "evidencia": _col(cab, "fotos", "evidencia", "link")}
+         "detalle": _col(cab, "detalle"), "evidencia": _col(cab, "fotos", "evidencia", "link"),
+         "oper": _col(cab, "porcentaje de avance operativo", "avance operativo"),
+         "av_meta": _col(cab, "porcentaje de avance ("), "fecha": _col(cab, "fecha de reporte")}
     out = []
     for f in filas[i_cab + 1:]:
         act = texto(_celda(f, c["actividad"]))
@@ -263,11 +279,18 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
         meta, ejec = numero(_celda(f, c["meta26"])), numero(_celda(f, c["ejecutada"]))
         det = texto(_celda(f, c["detalle"]))
         estado = _estado(_celda(f, c["estado"]), ESTADOS_FEN)
-        # Avance: meta ejecutada / meta 2026 si ambas son numeros; si no, el % que
-        # la direccion escribio en el detalle; si no, 100 cuando declara Implementado.
+        # Avance (desde el 16/10/2026): el «avance operativo de las labores de implementacion»
+        # que cada direccion reporta cada semana. Si no lo reporta: meta ejecutada / meta 2026,
+        # luego el % escrito en el detalle y 100 cuando declara Implementado.
+        oper = _porcentaje(_celda(f, c["oper"]))
+        av_meta = _porcentaje(_celda(f, c["av_meta"]))
+        if av_meta is None and meta and ejec is not None:
+            av_meta = min(round(100 * ejec / meta, 1), 100.0)
         m = re.search(r"(\d{1,3})\s*%", det)
-        if meta and ejec is not None:
-            av, fuente = min(round(100 * ejec / meta, 1), 100.0), "meta ejecutada / meta 2026"
+        if oper is not None:
+            av, fuente = oper, "avance operativo reportado"
+        elif av_meta is not None:
+            av, fuente = av_meta, "meta ejecutada / meta 2026"
         elif m:
             av, fuente = min(float(m.group(1)), 100.0), "% escrito en el detalle"
         elif estado == "Implementado":
@@ -282,9 +305,10 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
             "Actividad": act, "Producto": prod, "Unidad": texto(_celda(f, c["unidad"])),
             "Meta 2026": _num_txt(_celda(f, c["meta26"])), "Meta 2027": _num_txt(_celda(f, c["meta27"])),
             "Meta ejecutada": _num_txt(_celda(f, c["ejecutada"])),
-            "Estado actual": estado, "Avance (%)": av, "Avance (fuente)": fuente, "Detalle": det,
+            "Estado actual": estado, "Avance (%)": av, "Avance (fuente)": fuente,
+            "Avance de la meta (%)": av_meta, "Fecha de reporte": _fecha_txt(_celda(f, c["fecha"])), "Detalle": det,
             "Evidencia": evid, "Enlaces": re.findall(r"https?://[^\s,;)]+", evid),
-            "Nombre corto": (prod or act)[:70]})
+            "Nombre corto": (prod or act)[:80]})
     df = pd.DataFrame(out)
     df["Clave"] = clave_estable(df["Dirección"], df["Producto"].where(df["Producto"] != "", df["Actividad"]))
     df["Etiqueta"] = df["N°"].astype(str) + " · " + df["Dirección"]
