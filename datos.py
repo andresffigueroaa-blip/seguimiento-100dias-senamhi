@@ -227,6 +227,22 @@ def _num_txt(v) -> str:
     return f"{x:,.0f}".replace(",", " ") if x == int(x) else f"{x:,.2f}".replace(",", " ")
 
 
+# Agrupacion tematica 100 dias de gobierno (columna agregada en la matriz FEN, oct-2026): nombre corto.
+AGRUPACIONES = {"vigilancia": "Vigilancia climática, ambiental, hidrológica y agrometeorológica",
+                "alerta temprana": "Sistemas de Alerta Temprana con radares",
+                "ruta": "La Ruta de El Niño"}
+
+
+def _agrupacion(v) -> str:
+    t = plano(v)
+    if not t:
+        return "Sin agrupación"
+    for clave, nombre in AGRUPACIONES.items():
+        if clave in t:
+            return nombre
+    return texto(v)
+
+
 def _porcentaje(v):
     """Celda con formato de porcentaje (0,98) o escrita como 98 o «98 %» -> 98.0."""
     x = numero(v)
@@ -269,7 +285,8 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
          "meta27": _col(cab, "meta al 2027"), "ejecutada": _col(cab, "meta ejecutada"), "estado": _col(cab, "estado"),
          "detalle": _col(cab, "detalle"), "evidencia": _col(cab, "fotos", "evidencia", "link"),
          "oper": _col(cab, "porcentaje de avance operativo", "avance operativo"),
-         "av_meta": _col(cab, "porcentaje de avance ("), "fecha": _col(cab, "fecha de reporte")}
+         "av_meta": _col(cab, "porcentaje de avance ("), "fecha": _col(cab, "fecha de reporte"),
+         "agrup": _col(cab, "agrupacion")}
     out = []
     for f in filas[i_cab + 1:]:
         act = texto(_celda(f, c["actividad"]))
@@ -301,7 +318,7 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
         prod = texto(_celda(f, c["producto"]))
         out.append({
             "N°": int(n) if n is not None else len(out) + 1, "Dirección": sigla(_celda(f, c["responsable"])),
-            "Eje": texto(_celda(f, c["eje"])), "Objetivo": texto(_celda(f, c["objetivo"])),
+            "Eje": texto(_celda(f, c["eje"])), "Agrupación": _agrupacion(_celda(f, c["agrup"])), "Objetivo": texto(_celda(f, c["objetivo"])),
             "Actividad": act, "Producto": prod, "Unidad": texto(_celda(f, c["unidad"])),
             "Meta 2026": _num_txt(_celda(f, c["meta26"])), "Meta 2027": _num_txt(_celda(f, c["meta27"])),
             "Meta ejecutada": _num_txt(_celda(f, c["ejecutada"])),

@@ -20,7 +20,12 @@ def render(D: dict) -> None:
                        format_func=lambda d: "Todas las direcciones" if d == "Todas" else f"{d} · {cnt.get(d, 0)}")
     f_est = c2.multiselect("Estado actual", ESTADOS_FEN, placeholder="Todos los estados", key="estfen",
                            label_visibility="collapsed")
+    agrs = list(fen["Agrupación"].value_counts().index)
+    sel_agr = st.pills("Agrupación temática (100 días de gobierno)", agrs, selection_mode="multi", key="agrfen",
+                       format_func=lambda a: f"{a} · {int((fen['Agrupación'] == a).sum())}")
     v = fen.copy()
+    if sel_agr:
+        v = v[v["Agrupación"].isin(sel_agr)]
     if sel_dir and sel_dir != "Todas":
         v = v[v["Dirección"] == sel_dir]
         st.caption(NOMBRE_DIR.get(sel_dir, ""))
@@ -44,11 +49,23 @@ def render(D: dict) -> None:
         ("Actualizadas esta semana", f"{camb} / {len(v)}", f"respecto al {fecha(ant)}" if ant else "sin registro previo",
          AMARILLO if camb < len(v) else AZUL)])
 
+    st.markdown("### Por agrupación temática")
+    cols = st.columns(max(1, v["Agrupación"].nunique()))
+    for col, (agr, g) in zip(cols, v.groupby("Agrupación", sort=False)):
+        with col.container(border=True):
+            st.markdown(f"**{agr}**")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Acciones", len(g))
+            c2.metric("Avance operativo", pct(g["Avance (%)"].mean()))
+            c3.metric("Implementadas", int((g["Estado actual"] == "Implementado").sum()))
+            st.progress(min(int(g["Avance (%)"].fillna(0).mean()), 100))
+            st.caption(" · ".join(f"{d} {n}" for d, n in g["Dirección"].value_counts().items()))
+
     a, b = st.columns([3, 1.3])
     with a:
         etq = v["N°"].astype(str) + " · " + v["Dirección"] + "  " + v["Nombre corto"].astype(str)
         grafico(barras_avance(v, etq, "% de avance por acción (color = estado actual)",
-                              ["Estado actual", "Avance de la meta (%)", "Meta 2026", "Meta ejecutada", "Fecha de reporte"]),
+                              ["Agrupación", "Estado actual", "Avance de la meta (%)", "Meta 2026", "Meta ejecutada", "Fecha de reporte"]),
                 alto=max(400, 34 * len(v) + 120))
         st.caption("La barra es el «avance operativo de las labores de implementación» que cada dirección reporta cada "
                    "semana. El avance de la meta (meta ejecutada / meta 2026) solo marca 0 % o 100 % cuando la meta es una "
@@ -67,7 +84,7 @@ def render(D: dict) -> None:
     seccion_historia(hist, v, "Clave", D["ahora"], "fen")
 
     st.markdown("### Metas: lo comprometido y lo ejecutado")
-    tabla = v[["N°", "Dirección", "Nombre corto", "Unidad", "Meta 2026", "Meta 2027", "Meta ejecutada", "Avance de la meta (%)",
+    tabla = v[["N°", "Dirección", "Agrupación", "Nombre corto", "Unidad", "Meta 2026", "Meta 2027", "Meta ejecutada", "Avance de la meta (%)",
                "Avance (%)", "Fecha de reporte", "Estado actual"]]
     st.dataframe(tabla, width="stretch", hide_index=True, height=min(520, 40 * len(tabla) + 60),
                  column_config={"Nombre corto": st.column_config.TextColumn("Producto / entregable", width="large"),
@@ -90,7 +107,7 @@ def render(D: dict) -> None:
             c1, c2 = st.columns(2)
             c1.markdown(f"**Actividad:** {r['Actividad']}  \n**Objetivo:** {r['Objetivo'] or '—'}  \n"
                         f"**Producto / entregable:** {r['Producto'] or '—'}")
-            c2.markdown(f"**Dirección:** {NOMBRE_DIR.get(r['Dirección'], r['Dirección'])}  \n**Eje temático:** {r['Eje'] or '—'}  \n"
+            c2.markdown(f"**Dirección:** {NOMBRE_DIR.get(r['Dirección'], r['Dirección'])}  \n**Agrupación temática:** {r['Agrupación']}  \n**Eje temático:** {r['Eje'] or '—'}  \n"
                         f"**Unidad:** {r['Unidad'] or '—'}  \n**Meta 2026:** {r['Meta 2026'] or '—'} · "
                         f"**Meta 2027:** {r['Meta 2027'] or '—'} · **Ejecutada:** {r['Meta ejecutada'] or '—'}")
             if r["Detalle"]:
