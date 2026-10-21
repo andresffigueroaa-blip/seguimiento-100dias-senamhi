@@ -54,10 +54,13 @@ def render(D: dict) -> None:
     for col, (agr, g) in zip(cols, v.groupby("Agrupación", sort=False)):
         with col.container(border=True):
             st.markdown(f"**{agr}**")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Acciones", len(g))
-            c2.metric("Avance operativo", pct(g["Avance (%)"].mean()))
-            c3.metric("Implementadas", int((g["Estado actual"] == "Implementado").sum()))
+            # cifras en HTML: st.metric cortaba «100 %» en «10…» cuando la tarjeta es angosta
+            cifras = [("Acciones", len(g)), ("Avance operativo", pct(g["Avance (%)"].mean())),
+                      ("Implementadas", int((g["Estado actual"] == "Implementado").sum()))]
+            st.markdown('<div style="display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 8px 0">' + "".join(
+                f'<div style="min-width:70px"><div style="font-size:.8rem;color:#5B6B8A">{t}</div>'
+                f'<div style="font-size:1.7rem;font-weight:700;line-height:1.1;white-space:nowrap">{v_}</div></div>'
+                for t, v_ in cifras) + "</div>", unsafe_allow_html=True)
             st.progress(min(int(g["Avance (%)"].fillna(0).mean()), 100))
             st.caption(" · ".join(f"{d} {n}" for d, n in g["Dirección"].value_counts().items()))
 
