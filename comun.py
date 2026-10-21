@@ -100,7 +100,7 @@ def barras_avance(v: pd.DataFrame, etq: pd.Series, titulo: str, hover_cols: list
                 hoverinfo="skip", showlegend=False)
     fig.add_bar(y=etq, x=vv["Avance (%)"].fillna(0), orientation="h", width=0.6,
                 marker=dict(color=[COLOR_ESTADO.get(s, "#B0BEC5") for s in vv["Estado actual"]]),
-                text=[pct(x) for x in vv["Avance (%)"]], textposition="outside", textfont=dict(size=13),
+                text=[pct(x) for x in vv["Avance (%)"]], textposition="outside", textfont=dict(size=13), cliponaxis=False,
                 customdata=vv[hover_cols].astype(str).values,
                 hovertemplate="<b>%{y}</b><br>Avance: %{x:.0f} %<br>" + "<br>".join(
                     f"{c}: %{{customdata[{i}]}}" for i, c in enumerate(hover_cols)) + "<extra></extra>",
@@ -108,7 +108,7 @@ def barras_avance(v: pd.DataFrame, etq: pd.Series, titulo: str, hover_cols: list
     for est, col in COLOR_ESTADO.items():
         if est in set(vv["Estado actual"]):
             fig.add_bar(y=[None], x=[None], name=est, marker=dict(color=col))
-    fig.update_layout(barmode="overlay", xaxis=dict(range=[0, 118], ticksuffix=" %", showgrid=False),
+    fig.update_layout(barmode="overlay", xaxis=dict(range=[0, 125], ticksuffix=" %", showgrid=False, tickvals=[0, 50, 100]),
                       yaxis=dict(tickfont=dict(size=12.5)), title=titulo, legend=dict(orientation="h", y=-0.1))
     return fig
 
