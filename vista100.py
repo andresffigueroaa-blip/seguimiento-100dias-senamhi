@@ -86,10 +86,10 @@ def render(D: dict, filtros: dict) -> None:
             fig.add_bar(y=[None], x=[None], name=sit, marker=dict(color=col))
     fig.add_vline(x=pd.Timestamp(hoy), line=dict(color=AMARILLO, width=3))
     fig.add_annotation(x=pd.Timestamp(hoy), y=1.03, yref="paper", text=f"<b>hoy</b> {fecha_corta(hoy)}", showarrow=False,
-                       font=dict(color="#9A7600", size=12))
+                       xanchor="right", font=dict(color="#9A7600", size=12))   # a la izquierda de su línea: no pisa «día 100»
     fig.add_vline(x=pd.Timestamp(DIA_100), line=dict(color=AZUL, width=2, dash="dash"))
     fig.add_annotation(x=pd.Timestamp(DIA_100), y=1.03, yref="paper", text=f"<b>día 100</b> {fecha_corta(DIA_100)}",
-                       showarrow=False, font=dict(color=AZUL, size=12))
+                       showarrow=False, xanchor="left", font=dict(color=AZUL, size=12))
     if len(g):
         x0 = min(g["ini"].min(), pd.Timestamp(INICIO_GOBIERNO)) - pd.Timedelta(days=5)
         x1 = max(g["lim"].max(), pd.Timestamp(DIA_100)) + pd.Timedelta(days=28)

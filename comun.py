@@ -93,7 +93,8 @@ def barras_avance(v: pd.DataFrame, etq: pd.Series, titulo: str, hover_cols: list
     """Barras horizontales de avance (fondo gris claro + barra del color del estado)."""
     import plotly.graph_objects as go
     vv = v.iloc[::-1]
-    etq = etq.iloc[::-1]
+    # nombres largos apretaban el gráfico y cortaban las cifras: se acortan (el nombre completo va en el hover)
+    etq = etq.iloc[::-1].astype(str).map(lambda t: t if len(t) <= 70 else t[:68].rstrip() + "…")
     fig = go.Figure()
     fig.add_bar(y=etq, x=[100] * len(vv), orientation="h", marker=dict(color="#EEF1F6"), width=0.6,
                 hoverinfo="skip", showlegend=False)
@@ -107,7 +108,7 @@ def barras_avance(v: pd.DataFrame, etq: pd.Series, titulo: str, hover_cols: list
     for est, col in COLOR_ESTADO.items():
         if est in set(vv["Estado actual"]):
             fig.add_bar(y=[None], x=[None], name=est, marker=dict(color=col))
-    fig.update_layout(barmode="overlay", xaxis=dict(range=[0, 112], ticksuffix=" %", showgrid=False),
+    fig.update_layout(barmode="overlay", xaxis=dict(range=[0, 118], ticksuffix=" %", showgrid=False),
                       yaxis=dict(tickfont=dict(size=12.5)), title=titulo, legend=dict(orientation="h", y=-0.1))
     return fig
 
