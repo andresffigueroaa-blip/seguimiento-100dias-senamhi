@@ -20,20 +20,25 @@ import streamlit as st
 
 def recargar_modulos_cambiados() -> None:
     """Streamlit Cloud baja los archivos de cada push, pero deja en memoria los módulos ya
-    importados (datos, comun, vistas). Se recargan los de esta carpeta que cambiaron, en orden
-    de dependencia."""
+    importados (datos, comun, vistas). Si alguno cambió, se sacan todos de memoria y los imports
+    de abajo los cargan de nuevo: recargar solo el que cambió dejaba a las vistas con funciones
+    viejas de comun (pasó con las barras de avance el 21/10/2026)."""
+    vistos = getattr(sys, "_seg_mtimes", {})
+    propios = _modulos_propios()
+    if any(vistos.get(n) != t for n, t in propios.items()):
+        for n in propios:
+            del sys.modules[n]
+        importlib.invalidate_caches()
+
+
+def _modulos_propios() -> dict:
     base = os.path.normcase(str(Path(__file__).resolve().parent))
-    vistos = getattr(sys, "_seg_mtimes", None)
-    orden = {"datos": 0, "comun": 1}
-    propios = sorted((n for n, m in list(sys.modules.items()) if n != "__main__" and getattr(m, "__file__", None)
-                      and os.path.normcase(os.path.abspath(m.__file__)).startswith(base)),
-                     key=lambda n: (orden.get(n, 2), n))
-    actuales = {}
-    for n in propios:
-        actuales[n] = os.path.getmtime(sys.modules[n].__file__)
-        if vistos is None or vistos.get(n) != actuales[n]:
-            importlib.reload(sys.modules[n])
-    sys._seg_mtimes = actuales
+    out = {}
+    for n, m in list(sys.modules.items()):
+        f = getattr(m, "__file__", None)
+        if n != "__main__" and f and os.path.normcase(os.path.abspath(f)).startswith(base):
+            out[n] = os.path.getmtime(f) if os.path.exists(f) else None
+    return out
 
 
 recargar_modulos_cambiados()
@@ -42,6 +47,7 @@ import vista100  # noqa: E402
 import vistafen  # noqa: E402
 from comun import CSS, b64  # noqa: E402
 from datos import DIA_100, ESTADOS, INICIO_GOBIERNO, cargar, secreto
+sys._seg_mtimes = _modulos_propios()   # fechas de lo recién importado
 
 st.set_page_config(page_title="Seguimiento 100 días y FEN · SENAMHI", page_icon="assets/logo_senamhi.png",
                    layout="wide", initial_sidebar_state="expanded")
