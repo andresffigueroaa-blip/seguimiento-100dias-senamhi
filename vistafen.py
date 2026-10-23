@@ -128,8 +128,8 @@ def _programadas_2027(v: pd.DataFrame, hist: pd.DataFrame, hoy) -> None:
         ("Con meta 2027 definida", con_meta, f"de {len(v)}", COLOR_ESTADO["Implementado"] if con_meta == len(v) else AMARILLO),
         ("Con fecha prevista", con_fecha, f"de {len(v)}", COLOR_ESTADO["Implementado"] if con_fecha == len(v) else AMARILLO)])
     if (v["Periodo (fuente)"].str.startswith("regla")).any():
-        st.info("La matriz aún no tiene la columna «Periodo de ejecución»: el periodo se dedujo de las metas (solo meta 2027 → programada "
-                "para 2027; meta 2026 y 2027 → continúa). Cuando las direcciones llenen esa columna, manda lo que escriban.")
+        st.info("La matriz aún no tiene la columna «Periodo de ejecución». Mientras tanto, solo cuenta como programada para 2027 la acción "
+                "que tiene meta 2027 y no tiene meta 2026. Cuando las direcciones llenen esa columna (2026, 2027 o 2026-2027), manda lo que escriban.")
 
     st.markdown("### Por agrupación temática")
     cols = st.columns(max(1, v["Agrupación"].nunique()))

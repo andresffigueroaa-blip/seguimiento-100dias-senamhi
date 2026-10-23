@@ -257,11 +257,11 @@ def _periodo(v, meta26: str, meta27: str) -> tuple[str, str]:
         return "2027", "columna de la matriz"
     if "2026" in t:
         return "2026", "columna de la matriz"
+    # sin columna: solo es «programada para 2027» la que tiene meta 2027 y ninguna meta 2026. Tener las dos metas
+    # no basta para decir que continua (el 23/10 todas las acciones traian meta 2027 y salian 27 de 27 en 2027).
     if meta27 and not meta26:
         return "2027", "regla por metas (solo meta 2027)"
-    if meta27 and meta26:
-        return "2026-2027", "regla por metas (meta 2026 y 2027)"
-    return "2026", "regla por metas (meta 2026)"
+    return "2026", "regla por metas (tiene meta 2026)"
 
 
 def _porcentaje(v):
