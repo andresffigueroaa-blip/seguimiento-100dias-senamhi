@@ -45,3 +45,12 @@ resultado; requiere los dos enlaces como *secrets* del repositorio
 ```
 python -m streamlit run app.py
 ```
+
+## Periodo de ejecución (pedido de la SVC, 23/10/2026)
+
+La pestaña FEN tiene un selector **«En ejecución 2026» / «Programadas para el 2027»**. El periodo de cada acción
+sale de la columna **«Periodo de ejecución»** de la matriz (valores `2026`, `2027` o `2026-2027`; las `2026-2027`
+aparecen en los dos grupos). Mientras las direcciones no llenen esa columna, se deduce de las metas: solo «Meta al
+2027» → 2027; metas 2026 y 2027 → 2026-2027; el resto → 2026. También se lee, si existe, una columna
+**«Fecha prevista»** (inicio–fin). Para activarlo basta agregar las dos columnas a la matriz de Drive: el dashboard
+las reconoce por el encabezado.

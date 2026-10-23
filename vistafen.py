@@ -10,16 +10,28 @@ from comun import (seccion_historia, tarjetas, AMARILLO, AZUL, COLOR_DIR, COLOR_
                    fecha, grafico, pct, por_direccion)
 from datos import ESTADOS_FEN, NOMBRE_DIR
 
+# Periodo (pedido de la SVC del 23/10/2026): lo que se ejecuta en 2026 y lo programado para 2027.
+# Las acciones «2026-2027» aparecen en los dos grupos.
+EN_2026, EN_2027 = ["2026", "2026-2027"], ["2027", "2026-2027"]
+
 
 def render(D: dict) -> None:
     fen, hist, hoy = D["fen"], D["histfen"], D["hoy"]
+    n26, n27 = int(fen["Periodo"].isin(EN_2026).sum()), int(fen["Periodo"].isin(EN_2027).sum())
+    periodo = st.pills("Periodo", ["2026", "2027"], default="2026", key="perfen", label_visibility="collapsed",
+                       format_func=lambda p: f"En ejecución 2026 · {n26}" if p == "2026" else f"Programadas para el 2027 · {n27}") or "2026"
+    fen = fen[fen["Periodo"].isin(EN_2026 if periodo == "2026" else EN_2027)].reset_index(drop=True)
+    if periodo == "2027":
+        st.markdown("### Acciones programadas para el 2027")
+        st.caption("Lo que las direcciones proyectan atender el próximo año. Las que ya empezaron en 2026 y continúan aparecen también en "
+                   "«En ejecución 2026».")
     dirs = ["Todas"] + sorted(fen["Dirección"].dropna().unique())
     cnt = fen["Dirección"].value_counts()
     c1, c2 = st.columns([3, 2])
     sel_dir = c1.pills("Dirección", dirs, default="Todas", label_visibility="collapsed", key="dirfen",
                        format_func=lambda d: "Todas las direcciones" if d == "Todas" else f"{d} · {cnt.get(d, 0)}")
-    f_est = c2.multiselect("Estado actual", ESTADOS_FEN, placeholder="Todos los estados", key="estfen",
-                           label_visibility="collapsed")
+    f_est = c2.multiselect("Estado actual", ESTADOS_FEN + (["Programada"] if periodo == "2027" else []), placeholder="Todos los estados",
+                           key="estfen", label_visibility="collapsed")
     agrs = list(fen["Agrupación"].value_counts().index)
     sel_agr = st.pills("Agrupación temática (100 días de gobierno)", agrs, selection_mode="multi", key="agrfen",
                        format_func=lambda a: f"{a} · {int((fen['Agrupación'] == a).sum())}")
@@ -36,6 +48,10 @@ def render(D: dict) -> None:
         st.info("No hay acciones con esos filtros.")
         return
     ant = v["Fecha anterior"].dropna().iloc[0] if v["Fecha anterior"].notna().any() else None
+
+    if periodo == "2027":
+        _programadas_2027(v, hist, hoy)
+        return
 
     riesgo = int(v["Estado actual"].isin(["En riesgo de retraso", "Sin iniciar"]).sum())
     camb = int(v["Cambió"].sum())
@@ -88,13 +104,56 @@ def render(D: dict) -> None:
 
     st.markdown("### Metas: lo comprometido y lo ejecutado")
     tabla = v[["N°", "Dirección", "Agrupación", "Nombre corto", "Unidad", "Meta 2026", "Meta 2027", "Meta ejecutada", "Avance de la meta (%)",
-               "Avance (%)", "Fecha de reporte", "Estado actual"]]
+               "Avance (%)", "Fecha de reporte", "Estado actual", "Periodo"]]
     st.dataframe(tabla, width="stretch", hide_index=True, height=min(520, 40 * len(tabla) + 60),
                  column_config={"Nombre corto": st.column_config.TextColumn("Producto / entregable", width="large"),
                                 "Avance de la meta (%)": st.column_config.ProgressColumn("Avance de la meta (C/A)", format="%d %%",
                                                                                          min_value=0, max_value=100),
                                 "Avance (%)": st.column_config.ProgressColumn("Avance operativo", format="%d %%", min_value=0, max_value=100)})
 
+    fichas(v)
+    st.download_button("Descargar en Excel", excel({"FEN": v.drop(columns=["Enlaces"]), "Historial": hist[hist["Clave"].isin(v["Clave"])]}),
+                       f"acciones_fen_{hoy:%Y%m%d}.xlsx", icon=":material/download:", key="xfen")
+
+
+def _programadas_2027(v: pd.DataFrame, hist: pd.DataFrame, hoy) -> None:
+    """Vista del periodo 2027: cuantas, de quien y con que meta; sin avance operativo (aun no empiezan)."""
+    cont = int((v["Periodo"] == "2026-2027").sum())
+    con_fecha = int((v["Fecha prevista"] != "").sum())
+    con_meta = int((v["Meta 2027"] != "").sum())
+    tarjetas([
+        ("Acciones programadas", len(v), f"{v['Dirección'].nunique()} direcciones"),
+        ("Nuevas en 2027", len(v) - cont, "empiezan el próximo año", AZUL),
+        ("Continúan de 2026", cont, "ya están en ejecución", COLOR_ESTADO["En proceso"]),
+        ("Con meta 2027 definida", con_meta, f"de {len(v)}", COLOR_ESTADO["Implementado"] if con_meta == len(v) else AMARILLO),
+        ("Con fecha prevista", con_fecha, f"de {len(v)}", COLOR_ESTADO["Implementado"] if con_fecha == len(v) else AMARILLO)])
+    if (v["Periodo (fuente)"].str.startswith("regla")).any():
+        st.info("La matriz aún no tiene la columna «Periodo de ejecución»: el periodo se dedujo de las metas (solo meta 2027 → programada "
+                "para 2027; meta 2026 y 2027 → continúa). Cuando las direcciones llenen esa columna, manda lo que escriban.")
+
+    st.markdown("### Por agrupación temática")
+    cols = st.columns(max(1, v["Agrupación"].nunique()))
+    for col, (agr, g) in zip(cols, v.groupby("Agrupación", sort=False)):
+        with col.container(border=True):
+            st.markdown(f"**{agr}**")
+            cifras = [("Acciones", len(g)), ("Nuevas 2027", int((g["Periodo"] == "2027").sum())), ("Continúan", int((g["Periodo"] == "2026-2027").sum()))]
+            st.markdown('<div style="display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 8px 0">' + "".join(
+                f'<div style="min-width:70px"><div style="font-size:.8rem;color:#5B6B8A">{t}</div>'
+                f'<div style="font-size:1.7rem;font-weight:700;line-height:1.1;white-space:nowrap">{v_}</div></div>'
+                for t, v_ in cifras) + "</div>", unsafe_allow_html=True)
+            st.caption(" · ".join(f"{d} {n}" for d, n in g["Dirección"].value_counts().items()))
+
+    st.markdown("### Qué se programa para el 2027")
+    tabla = v[["N°", "Dirección", "Agrupación", "Nombre corto", "Unidad", "Meta 2027", "Fecha prevista", "Periodo", "Estado actual"]]
+    st.dataframe(tabla, width="stretch", hide_index=True, height=min(520, 40 * len(tabla) + 60),
+                 column_config={"Nombre corto": st.column_config.TextColumn("Producto / entregable", width="large"),
+                                "Periodo": st.column_config.TextColumn("Periodo", help="2027: empieza el próximo año · 2026-2027: ya está en ejecución y continúa")})
+    fichas(v)
+    st.download_button("Descargar en Excel", excel({"FEN 2027": v.drop(columns=["Enlaces"]), "Historial": hist[hist["Clave"].isin(v["Clave"])]}),
+                       f"acciones_fen_2027_{hoy:%Y%m%d}.xlsx", icon=":material/download:", key="xfen27")
+
+
+def fichas(v: pd.DataFrame) -> None:
     st.markdown("### Ficha de cada acción")
     st.caption("Todo lo que trae la matriz FEN, tal como la llena cada dirección, con sus evidencias.")
     for _, r in v.iterrows():
@@ -102,6 +161,8 @@ def render(D: dict) -> None:
         with st.expander(f"{r['N°']}  ·  {r['Dirección']}  ·  {r['Nombre corto']}  ·  {pct(r['Avance (%)'])}"):
             st.markdown(etiqueta(est or "Sin estado", COLOR_ESTADO.get(est, "#B0BEC5"))
                         + etiqueta(r["Dirección"], COLOR_DIR.get(r["Dirección"], AZUL))
+                        + (etiqueta("Continúa en 2027", "#6E5BAA") if r["Periodo"] == "2026-2027" else "")
+                        + (etiqueta("Programada para 2027", "#6E5BAA") if r["Periodo"] == "2027" else "")
                         + (etiqueta("Actualizada esta semana", AMARILLO) if r["Cambió"] else ""), unsafe_allow_html=True)
             if pd.notna(r["Avance (%)"]):
                 st.progress(min(int(r["Avance (%)"]), 100), text=f"Avance: {pct(r['Avance (%)'])} ({r['Avance (fuente)']})")
@@ -112,7 +173,8 @@ def render(D: dict) -> None:
                         f"**Producto / entregable:** {r['Producto'] or '—'}")
             c2.markdown(f"**Dirección:** {NOMBRE_DIR.get(r['Dirección'], r['Dirección'])}  \n**Agrupación temática:** {r['Agrupación']}  \n**Eje temático:** {r['Eje'] or '—'}  \n"
                         f"**Unidad:** {r['Unidad'] or '—'}  \n**Meta 2026:** {r['Meta 2026'] or '—'} · "
-                        f"**Meta 2027:** {r['Meta 2027'] or '—'} · **Ejecutada:** {r['Meta ejecutada'] or '—'}")
+                        f"**Meta 2027:** {r['Meta 2027'] or '—'} · **Ejecutada:** {r['Meta ejecutada'] or '—'}  \n"
+                        f"**Periodo:** {r['Periodo']} ({r['Periodo (fuente)']}) · **Fecha prevista:** {r['Fecha prevista'] or '—'}")
             if r["Detalle"]:
                 st.markdown(f"**Detalle del avance:** {r['Detalle']}")
             if r["Evidencia"]:
@@ -121,5 +183,3 @@ def render(D: dict) -> None:
                 cols = st.columns(min(len(r["Enlaces"]), 4))
                 for i, u in enumerate(r["Enlaces"][:4]):
                     cols[i].link_button(f"Abrir evidencia {i + 1}", u, icon=":material/open_in_new:", width="stretch")
-    st.download_button("Descargar en Excel", excel({"FEN": v.drop(columns=["Enlaces"]), "Historial": hist[hist["Clave"].isin(v["Clave"])]}),
-                       f"acciones_fen_{hoy:%Y%m%d}.xlsx", icon=":material/download:", key="xfen")

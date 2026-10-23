@@ -243,6 +243,27 @@ def _agrupacion(v) -> str:
     return texto(v)
 
 
+PERIODOS = ["2026", "2026-2027", "2027"]
+
+
+def _periodo(v, meta26: str, meta27: str) -> tuple[str, str]:
+    """Periodo de ejecucion de una accion FEN: «2026» (en ejecucion), «2027» (programada) o «2026-2027» (continua).
+    Pedido de la SVC del 23/10/2026. Manda la columna «Periodo de ejecucion» de la matriz; mientras las direcciones no
+    la llenen, se deduce de las metas: solo meta 2027 -> 2027; meta 2026 y 2027 -> 2026-2027; el resto -> 2026."""
+    t = plano(v)
+    if "2026" in t and "2027" in t:
+        return "2026-2027", "columna de la matriz"
+    if "2027" in t:
+        return "2027", "columna de la matriz"
+    if "2026" in t:
+        return "2026", "columna de la matriz"
+    if meta27 and not meta26:
+        return "2027", "regla por metas (solo meta 2027)"
+    if meta27 and meta26:
+        return "2026-2027", "regla por metas (meta 2026 y 2027)"
+    return "2026", "regla por metas (meta 2026)"
+
+
 def _porcentaje(v):
     """Celda con formato de porcentaje (0,98) o escrita como 98 o «98 %» -> 98.0."""
     x = numero(v)
@@ -286,7 +307,10 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
          "detalle": _col(cab, "detalle"), "evidencia": _col(cab, "fotos", "evidencia", "link"),
          "oper": _col(cab, "porcentaje de avance operativo", "avance operativo"),
          "av_meta": _col(cab, "porcentaje de avance ("), "fecha": _col(cab, "fecha de reporte"),
-         "agrup": _col(cab, "agrupacion")}
+         "agrup": _col(cab, "agrupacion"),
+         # columnas pedidas el 23/10/2026 (aun no estan en la matriz): periodo de ejecucion y fecha prevista
+         "periodo": _col(cab, "periodo", "ano de ejecucion", "año de ejecucion"),
+         "fprev": _col(cab, "fecha prevista", "fecha de inicio", "plazo")}
     out = []
     for f in filas[i_cab + 1:]:
         act = texto(_celda(f, c["actividad"]))
@@ -296,6 +320,9 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
         meta, ejec = numero(_celda(f, c["meta26"])), numero(_celda(f, c["ejecutada"]))
         det = texto(_celda(f, c["detalle"]))
         estado = _estado(_celda(f, c["estado"]), ESTADOS_FEN)
+        periodo, per_fuente = _periodo(_celda(f, c["periodo"]), texto(_celda(f, c["meta26"])), texto(_celda(f, c["meta27"])))
+        if periodo == "2027" and not estado:
+            estado = "Programada"          # aun no empieza: no es «sin iniciar» ni atraso
         # Avance (desde el 16/10/2026): el «avance operativo de las labores de implementacion»
         # que cada direccion reporta cada semana. Si no lo reporta: meta ejecutada / meta 2026,
         # luego el % escrito en el detalle y 100 cuando declara Implementado.
@@ -322,6 +349,7 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
             "Actividad": act, "Producto": prod, "Unidad": texto(_celda(f, c["unidad"])),
             "Meta 2026": _num_txt(_celda(f, c["meta26"])), "Meta 2027": _num_txt(_celda(f, c["meta27"])),
             "Meta ejecutada": _num_txt(_celda(f, c["ejecutada"])),
+            "Periodo": periodo, "Periodo (fuente)": per_fuente, "Fecha prevista": _fecha_txt(_celda(f, c["fprev"])),
             "Estado actual": estado, "Avance (%)": av, "Avance (fuente)": fuente,
             "Avance de la meta (%)": av_meta, "Fecha de reporte": _fecha_txt(_celda(f, c["fecha"])), "Detalle": det,
             "Evidencia": evid, "Enlaces": re.findall(r"https?://[^\s,;)]+", evid),
