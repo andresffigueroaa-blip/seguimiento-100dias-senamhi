@@ -94,7 +94,7 @@ def render(D: dict) -> None:
     with a:
         _mapa(v)
     with b:
-        dona_estado(v, ESTADOS_FEN, "Estado actual (lo declara cada dirección)")
+        dona_estado(v, ESTADOS_FEN, "Estado actual")
         g = v.groupby("Dirección").size()
         st.markdown("**Acciones por dirección:** " + " · ".join(f"{k} {int(n)}" for k, n in g.items()))
 
