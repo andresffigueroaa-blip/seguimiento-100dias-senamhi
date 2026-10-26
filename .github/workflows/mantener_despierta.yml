@@ -1,0 +1,26 @@
+# Streamlit Community Cloud duerme la app si pasa ~12 horas sin visitas y alguien tiene que
+# despertarla a mano («Zzzz… Yes, get this app back up!»). Esta visita automática cada 4 horas
+# evita que llegue a dormirse. Cuesta unos segundos por corrida.
+name: Mantener despierta la app
+
+on:
+  schedule:
+    - cron: "30 */4 * * *"
+  workflow_dispatch:
+
+jobs:
+  visitar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Visitar la app
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -sS -L -o /dev/null -w "%{http_code}" --max-time 60 \
+              -A "Mozilla/5.0 (robot que mantiene despierta la app)" \
+              "https://seguimiento-100dias-senamhi-fmyrsuwri4c6p7xhgpzjft.streamlit.app/~/+/")
+            echo "intento $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 40
+          done
+          echo "::warning::La app no respondió 200; si está dormida hay que despertarla una vez a mano."
