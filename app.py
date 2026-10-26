@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Seguimiento SENAMHI: Prioridades 100 dias (MINAM) y Acciones prioritarias FEN 2026.
+"""Seguimiento SENAMHI: matriz de acciones prioritarias 2026-2027 (metas de los 100 dias, 2026, 2027 y 2026-2027).
 
-Lee las dos matrices directamente desde Drive (cada direccion actualiza su fila
-ahi) y muestra el tablero. La evolucion semanal sale de las instantaneas de
-snapshot.py.
+Lee la matriz directamente desde Drive (cada direccion actualiza su fila ahi) y muestra el tablero.
+La evolucion semanal sale de las instantaneas de snapshot.py.
 
     streamlit run app.py
 """
@@ -43,14 +42,13 @@ def _modulos_propios() -> dict:
 
 recargar_modulos_cambiados()
 
-import vista100  # noqa: E402
 import vistafen  # noqa: E402
 from comun import CSS, b64  # noqa: E402
-from datos import DIA_100, ESTADOS, INICIO_GOBIERNO, cargar, secreto
+from datos import DIA_100, INICIO_GOBIERNO, cargar, secreto
 sys._seg_mtimes = _modulos_propios()   # fechas de lo recién importado
 
-st.set_page_config(page_title="Seguimiento 100 días y FEN · SENAMHI", page_icon="assets/logo_senamhi.png",
-                   layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Seguimiento de prioridades · SENAMHI", page_icon="assets/logo_senamhi.png",
+                   layout="wide", initial_sidebar_state="collapsed")
 st.markdown(CSS, unsafe_allow_html=True)
 LOGO, LOGO_MINAM = b64("assets/logo_senamhi.png"), b64("assets/logo_minam.png")
 
@@ -78,7 +76,7 @@ def acceso() -> None:
 acceso()
 
 
-@st.cache_data(ttl=300, show_spinner="Leyendo las matrices…")
+@st.cache_data(ttl=300, show_spinner="Leyendo la matriz…")
 def datos():
     return cargar()
 
@@ -91,21 +89,18 @@ faltan = (DIA_100 - hoy).days
 # ------------------------------------------------------------------ sidebar
 with st.sidebar:
     st.markdown(f'<div class="logo-caja"><img src="data:image/png;base64,{LOGO}" width="100%"></div>', unsafe_allow_html=True)
-    st.markdown("### Filtros · 100 días")
-    filtros = {"estado": st.multiselect("Estado actual", ESTADOS, placeholder="Todos"),
-               "prioridad": st.multiselect("Prioridad (MINAM)", ["Alta", "Media", "Baja"], placeholder="Todas"),
-               "nino": st.toggle("Solo relacionadas con El Niño")}
-    st.divider()
-    for etq, sec in (("Abrir la matriz 100 días (Drive)", "MATRIZ_100DIAS_URL"), ("Abrir la matriz FEN (Drive)", "MATRIZ_FEN_URL")):
-        if secreto(sec):
-            st.link_button(etq, secreto(sec), icon=":material/edit:", width="stretch")
+    if secreto("MATRIZ_FEN_URL"):
+        st.link_button("Abrir la matriz en Drive", secreto("MATRIZ_FEN_URL"), icon=":material/edit:", width="stretch")
     if st.button("Actualizar datos", icon=":material/refresh:", width="stretch"):
         st.cache_data.clear()
         st.rerun()
     st.caption(f"Leído el {D['leido']:%d/%m/%Y %H:%M} (hora de Lima). "
-               + ("Fuente: archivos de Drive; se vuelven a leer cada 5 minutos." if D["fuente100"] == "drive"
-                  else "Fuente: copia local de las matrices."))
+               + ("Fuente: la matriz en Drive; se vuelve a leer cada 5 minutos." if D["fuentefen"] == "drive"
+                  else "Fuente: copia local de la matriz."))
     st.caption(f"Gobierno desde el {INICIO_GOBIERNO:%d/%m/%Y}. Día 100: {DIA_100:%d/%m/%Y}.")
+    st.caption("Tipo de meta: Meta 100 días (compromisos de los primeros 100 días de gobierno), Meta 2026, Meta 2027 "
+               "y Meta 2026-2027 (empieza este año y continúa). Lo indica cada dirección en la columna «Tipo de meta»; "
+               "si no lo indica, se deduce de las metas: 0 significa que no es de ese año.")
 
 # ---------------------------------------------------------------- cabecera
 c1, c2, c3 = st.columns([1.1, 4.2, 1.4])
@@ -113,7 +108,7 @@ with c1:
     st.markdown(f'<img src="data:image/png;base64,{LOGO}" width="100%" style="max-width:200px">', unsafe_allow_html=True)
 with c2:
     st.markdown('<div class="titulo"><h1>Seguimiento de prioridades · SENAMHI</h1>'
-                '<p>Prioridades de los primeros 100 días y acciones prioritarias en el marco del FEN 2026.</p></div>',
+                f'<p>Matriz de acciones prioritarias 2026-2027 · {len(D["fen"])} acciones: metas de los 100 días, 2026, 2027 y 2026-2027.</p></div>',
                 unsafe_allow_html=True)
 with c3:
     st.markdown(f'<div class="dia"><div class="n">Día {dia}</div><div class="t">de 100 · '
@@ -123,18 +118,12 @@ with c3:
 for aviso in D["avisos"]:
     st.warning(aviso, icon=":material/cloud_off:")
 
-# ----------------------------------------------------------------- pestañas
-t100, tfen = st.tabs([f"Prioridades 100 días · {len(D['m100'])} actividades",
-                      f"Acciones prioritarias FEN 2026 · {len(D['fen'])} acciones"])
-with t100:
-    vista100.render(D, filtros)
-with tfen:
-    vistafen.render(D)
+vistafen.render(D)
 
 st.markdown("---")
 f1, f2 = st.columns([5, 1])
 f1.caption(f"SENAMHI · Dirección de Meteorología, Clima y Ambiente Atmosférico · Datos al {hoy:%d/%m/%Y}. "
-           "Fuentes: Matriz de Prioridades 100 días del Sector Ambiente (MINAM) y Matriz de acciones prioritarias "
-           "en el marco del FEN · SENAMHI 2026, ambas en Drive.")
+           "Fuente: Matriz de acciones prioritarias en el marco del FEN · SENAMHI 2026-2027, en Drive (cada dirección "
+           "actualiza su fila; el tablero la lee cada 5 minutos y guarda cada cambio).")
 f2.markdown(f'<img src="data:image/png;base64,{LOGO_MINAM}" width="100%" style="max-width:150px;opacity:.85">',
             unsafe_allow_html=True)

@@ -13,5 +13,5 @@ at.secrets["PASSWORD"] = ""
 at.run()
 errs = [e.value for e in at.exception] + [e.value for e in at.error]
 print(f"app {time.time() - t0:5.1f}s  {'ok' if not errs else 'ERROR ' + str(errs[0])[:900]}")
-print("tabs:", [t.label for t in at.tabs], "| warnings:", [w.value[:80] for w in at.warning])
+print("warnings:", [w.value[:80] for w in at.warning])
 sys.exit(bool(errs))

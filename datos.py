@@ -243,25 +243,59 @@ def _agrupacion(v) -> str:
     return texto(v)
 
 
-PERIODOS = ["2026", "2026-2027", "2027"]
+# Tipo de meta (columna «Tipo de meta» de la matriz, desde el 26/10/2026): a que compromiso responde cada accion.
+TIPOS_META = ["Meta 100 días", "Meta 2026", "Meta 2027", "Meta 2026-2027"]
 
 
-def _periodo(v, meta26: str, meta27: str) -> tuple[str, str]:
-    """Periodo de ejecucion de una accion FEN: «2026» (en ejecucion), «2027» (programada) o «2026-2027» (continua).
-    Pedido de la SVC del 23/10/2026. Manda la columna «Periodo de ejecucion» de la matriz; mientras las direcciones no
-    la llenen, se deduce de las metas: solo meta 2027 -> 2027; meta 2026 y 2027 -> 2026-2027; el resto -> 2026."""
+def _tipo_meta(v, meta26, meta27) -> tuple[str, str]:
+    """Manda la columna «Tipo de meta». Si la direccion no la lleno, se deduce de las metas: «Meta al cierre de 2026»
+    y «Meta al 2027» traen 0 cuando la accion no es de ese año y un numero cuando si lo es."""
     t = plano(v)
+    if "100" in t:
+        return "Meta 100 días", "columna «Tipo de meta»"
     if "2026" in t and "2027" in t:
-        return "2026-2027", "columna de la matriz"
+        return "Meta 2026-2027", "columna «Tipo de meta»"
     if "2027" in t:
-        return "2027", "columna de la matriz"
+        return "Meta 2027", "columna «Tipo de meta»"
     if "2026" in t:
-        return "2026", "columna de la matriz"
-    # sin columna: solo es «programada para 2027» la que tiene meta 2027 y ninguna meta 2026. Tener las dos metas
-    # no basta para decir que continua (el 23/10 todas las acciones traian meta 2027 y salian 27 de 27 en 2027).
-    if meta27 and not meta26:
-        return "2027", "regla por metas (solo meta 2027)"
-    return "2026", "regla por metas (tiene meta 2026)"
+        return "Meta 2026", "columna «Tipo de meta»"
+    a, b = (meta26 or 0) > 0, (meta27 or 0) > 0
+    if a and b:
+        return "Meta 2026-2027", "deducido de las metas 2026 y 2027"
+    if b:
+        return "Meta 2027", "deducido: solo tiene meta 2027"
+    if a:
+        return "Meta 2026", "deducido: solo tiene meta 2026"
+    return "Sin tipo", "sin tipo ni metas en la matriz"
+
+
+# Nombre corto de cada eje tematico para filtros y graficos (el nombre completo queda en la ficha).
+EJES_CORTOS = [("pronosticos y avisos hidrolog", "Pronósticos y avisos hidrológicos"),
+               ("gestion institucional", "Modernización de la red de observación"),
+               ("monitoreo ambiental", "Monitoreo ambiental e hidrometeorológico"),
+               ("monitoreo y vigilancia hidrometeorologic", "Monitoreo y vigilancia hidrometeorológica"),
+               ("vigilancia climatica y agromet", "Vigilancia climática y agrometeorológica"),
+               ("vigilancia climatica para", "Vigilancia climática en el marco del FEN"),
+               ("fortalecimiento de la vigilancia climatica", "Vigilancia climática y articulación multisectorial"),
+               ("fortalecimiento de los servicios", "Servicios meteorológicos y climáticos"),
+               ("monitoreo agromet", "Monitoreo agrometeorológico"),
+               ("gestion del riesgo agroclim", "Gestión del riesgo agroclimático")]
+
+
+def eje_corto(eje: str) -> str:
+    p = plano(eje)
+    if not p:
+        return "Sin eje"
+    for ini, nombre in EJES_CORTOS:
+        if p.startswith(ini):
+            return nombre
+    return eje if len(eje) <= 45 else eje[:43].rstrip() + "…"
+
+
+def _meta_txt(v) -> str:
+    """Meta de la matriz: 0 significa «no es de ese año» y se muestra como —."""
+    x = numero(v)
+    return "—" if x == 0 else _num_txt(v)
 
 
 def _porcentaje(v):
@@ -308,8 +342,8 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
          "oper": _col(cab, "porcentaje de avance operativo", "avance operativo"),
          "av_meta": _col(cab, "porcentaje de avance ("), "fecha": _col(cab, "fecha de reporte"),
          "agrup": _col(cab, "agrupacion"),
-         # columnas pedidas el 23/10/2026 (aun no estan en la matriz): periodo de ejecucion y fecha prevista
-         "periodo": _col(cab, "periodo", "ano de ejecucion", "año de ejecucion"),
+         # desde el 26/10/2026 la matriz trae el tipo de meta y el nombre corto de cada accion
+         "tipo": _col(cab, "tipo de meta"), "corto": _col(cab, "nombre corto"),
          "fprev": _col(cab, "fecha prevista", "fecha de inicio", "plazo")}
     out = []
     for f in filas[i_cab + 1:]:
@@ -318,11 +352,12 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
             continue
         n = numero(_celda(f, c["n"]))
         meta, ejec = numero(_celda(f, c["meta26"])), numero(_celda(f, c["ejecutada"]))
+        meta27 = numero(_celda(f, c["meta27"]))
         det = texto(_celda(f, c["detalle"]))
         estado = _estado(_celda(f, c["estado"]), ESTADOS_FEN)
-        periodo, per_fuente = _periodo(_celda(f, c["periodo"]), texto(_celda(f, c["meta26"])), texto(_celda(f, c["meta27"])))
-        if periodo == "2027" and not estado:
-            estado = "Programada"          # aun no empieza: no es «sin iniciar» ni atraso
+        tipo, tipo_fuente = _tipo_meta(_celda(f, c["tipo"]), meta, meta27)
+        if tipo == "Meta 2027" and not estado:
+            estado = "Sin iniciar"
         # Avance (desde el 16/10/2026): el «avance operativo de las labores de implementacion»
         # que cada direccion reporta cada semana. Si no lo reporta: meta ejecutada / meta 2026,
         # luego el % escrito en el detalle y 100 cuando declara Implementado.
@@ -343,17 +378,19 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
             av, fuente = None, "sin dato"
         evid = texto(_celda(f, c["evidencia"]))
         prod = texto(_celda(f, c["producto"]))
+        eje = texto(_celda(f, c["eje"]))
+        corto = texto(_celda(f, c["corto"])) or (prod or act)
         out.append({
             "N°": int(n) if n is not None else len(out) + 1, "Dirección": sigla(_celda(f, c["responsable"])),
-            "Eje": texto(_celda(f, c["eje"])), "Agrupación": _agrupacion(_celda(f, c["agrup"])), "Objetivo": texto(_celda(f, c["objetivo"])),
-            "Actividad": act, "Producto": prod, "Unidad": texto(_celda(f, c["unidad"])),
-            "Meta 2026": _num_txt(_celda(f, c["meta26"])), "Meta 2027": _num_txt(_celda(f, c["meta27"])),
-            "Meta ejecutada": _num_txt(_celda(f, c["ejecutada"])),
-            "Periodo": periodo, "Periodo (fuente)": per_fuente, "Fecha prevista": _fecha_txt(_celda(f, c["fprev"])),
+            "Tipo de meta": tipo, "Tipo (fuente)": tipo_fuente,
+            "Eje": eje, "Eje corto": eje_corto(eje), "Agrupación": _agrupacion(_celda(f, c["agrup"])),
+            "Objetivo": texto(_celda(f, c["objetivo"])), "Actividad": act, "Producto": prod, "Unidad": texto(_celda(f, c["unidad"])),
+            "Meta 2026": _meta_txt(_celda(f, c["meta26"])), "Meta 2027": _meta_txt(_celda(f, c["meta27"])),
+            "Meta ejecutada": _num_txt(_celda(f, c["ejecutada"])), "Fecha prevista": _fecha_txt(_celda(f, c["fprev"])),
             "Estado actual": estado, "Avance (%)": av, "Avance (fuente)": fuente,
             "Avance de la meta (%)": av_meta, "Fecha de reporte": _fecha_txt(_celda(f, c["fecha"])), "Detalle": det,
             "Evidencia": evid, "Enlaces": re.findall(r"https?://[^\s,;)]+", evid),
-            "Nombre corto": (prod or act)[:80]})
+            "Nombre corto": corto if len(corto) <= 90 else corto[:88].rstrip() + "…"})
     df = pd.DataFrame(out)
     df["Clave"] = clave_estable(df["Dirección"], df["Producto"].where(df["Producto"] != "", df["Actividad"]))
     df["Etiqueta"] = df["N°"].astype(str) + " · " + df["Dirección"]
@@ -450,18 +487,15 @@ def _fuente(nombre_secreto: str, local: Path):
 def cargar() -> dict:
     ahora = ahora_local()
     hoy = ahora.date()
-    b100, f100, a100 = _fuente("MATRIZ_100DIAS_URL", LOCAL_100)
+    # desde el 26/10/2026 hay una sola matriz (acciones prioritarias): las metas de los 100 dias van dentro,
+    # con «Tipo de meta» = Matriz 100 dias. La matriz MINAM ya no se lee.
     bfen, ffen, afen = _fuente("MATRIZ_FEN_URL", LOCAL_FEN)
-    m100, fen = leer_matriz_100(b100), leer_matriz_fen(bfen)
-    m100["Situación de plazo"] = [situacion_plazo(hoy, av if pd.notna(av) else None, ini, lim)
-                                  for av, ini, lim in zip(m100["Avance (%)"], m100["Fecha inicio"], m100["Fecha límite"])]
-    m100["Días para el límite"] = [(lim - hoy).days if lim else None for lim in m100["Fecha límite"]]
-    m100["Etiqueta"] = m100["ID"].str.replace("SENAMHI-", "", regex=False)
-    h100, hfen = leer_historial(HIST_100, "ID"), leer_historial(HIST_FEN, "Clave")
+    fen = leer_matriz_fen(bfen)
+    hfen = leer_historial(HIST_FEN, "Clave")
     lunes = inicio_semana(hoy)
     # "esta semana": se compara con lo que habia antes del lunes; si el registro
     # empezo esta semana, con la primera lectura (linea de partida).
-    for df, h, clave in ((m100, h100, "ID"), (fen, hfen, "Clave")):
+    for df, h, clave in ((fen, hfen, "Clave"),):
         ref = ultimo_registro(h, clave, hasta=lunes)
         fecha_ref = h.loc[h["Fecha"] < lunes, "Fecha"].max() if len(ref) else None
         if not len(ref) and len(h):
@@ -472,5 +506,5 @@ def cargar() -> dict:
         df["Fecha anterior"] = fecha_ref if fecha_ref is not None and pd.notna(fecha_ref) else None
         df["Cambió"] = [bool(k in ref.index and not all(_igual(r.get(c, ""), ref.loc[k, c]) for c in CAMPOS_HIST))
                         for k, (_, r) in zip(df[clave], df.iterrows())]
-    return {"m100": m100, "fen": fen, "hist100": h100, "histfen": hfen, "fuente100": f100, "fuentefen": ffen,
-            "avisos": [a for a in (a100, afen) if a], "leido": ahora_lima(), "hoy": hoy, "ahora": ahora}
+    return {"fen": fen, "histfen": hfen, "fuentefen": ffen, "avisos": [afen] if afen else [],
+            "leido": ahora_lima(), "hoy": hoy, "ahora": ahora}

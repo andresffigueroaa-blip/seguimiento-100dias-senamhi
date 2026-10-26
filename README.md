@@ -46,11 +46,11 @@ resultado; requiere los dos enlaces como *secrets* del repositorio
 python -m streamlit run app.py
 ```
 
-## Periodo de ejecución (pedido de la SVC, 23/10/2026)
+## Una sola matriz y tipo de meta (26/10/2026)
 
-La pestaña FEN tiene un selector **«En ejecución 2026» / «Programadas para el 2027»**. El periodo de cada acción
-sale de la columna **«Periodo de ejecución»** de la matriz (valores `2026`, `2027` o `2026-2027`; las `2026-2027`
-aparecen en los dos grupos). Mientras las direcciones no llenen esa columna, se deduce de las metas: solo «Meta al
-2027» → 2027; metas 2026 y 2027 → 2026-2027; el resto → 2026. También se lee, si existe, una columna
-**«Fecha prevista»** (inicio–fin). Para activarlo basta agregar las dos columnas a la matriz de Drive: el dashboard
-las reconoce por el encabezado.
+Desde el 26/10/2026 el tablero lee **solo la matriz de acciones prioritarias** (Drive, `MATRIZ_FEN_URL`);
+la matriz MINAM de 100 días ya no se usa (`vista100.py` queda sin uso). Cada acción trae un **Tipo de meta**
+(`Matriz 100 días`, `Meta 2026`, `Meta 2027`, `Meta 2026 - 2027`) y un **Nombre corto**; si una fila no
+tiene tipo, se deduce de las metas (0 en «Meta al cierre de 2026» o «Meta al 2027» = no es de ese año).
+Filtros: tipo de meta, dirección, eje temático (nombre corto en `datos.EJES_CORTOS`), agrupación temática
+y estado. Los gráficos usan el nombre corto; la ficha de cada acción muestra el nombre completo.

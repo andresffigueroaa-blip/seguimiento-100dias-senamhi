@@ -15,13 +15,17 @@ COLOR_ESTADO = {"Sin iniciar": "#B0BEC5", "En proceso": "#1E88E5", "Con riesgo /
 COLOR_SIT = {"Completada": "#2E7D32", "En plazo": "#43A047", "Por iniciar": "#90A4AE",
              "Fecha límite vencida": "#C62828", "Sin fecha límite": "#B0BEC5"}
 COLOR_DIR = {"DMCA": AZUL, "DHI": "#2A9D8F", "DSCA": "#E07A1F", "DRD": "#7A5195"}
+COLOR_TIPO = {"Meta 100 días": AZUL, "Meta 2026": "#2A9D8F", "Meta 2027": "#7A5195", "Meta 2026-2027": "#E07A1F", "Sin tipo": "#B0BEC5"}
+EXPLICA_TIPO = {"Meta 100 días": "compromisos de los primeros 100 días de gobierno",
+                "Meta 2026": "metas que se cierran este año", "Meta 2027": "programadas para el próximo año",
+                "Meta 2026-2027": "empiezan este año y continúan en 2027", "Sin tipo": "la dirección aún no indicó el tipo"}
 MESES_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"]
 
 CSS = f"""
 <style>
 .block-container {{padding-top: 2.2rem; padding-bottom: 2rem; max-width: 1500px;}}
 html, body, [class*="css"] {{font-size: 16px;}}
-.kpis {{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:14px;margin:4px 0 18px 0;}}
+.kpis {{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:4px 0 18px 0;}}
 .kpi {{background:#fff;border-radius:12px;padding:14px 18px;border:1px solid {LINEA};border-left:6px solid {AZUL};}}
 .kpi .l {{font-size:.9rem;color:{GRIS_TXT};line-height:1.25;word-break:normal;overflow-wrap:normal;hyphens:none;}}
 .kpi .v {{font-size:2.2rem;font-weight:700;color:{AZUL};line-height:1.15;white-space:nowrap;}}
@@ -159,9 +163,10 @@ def evolucion(hist: pd.DataFrame, actual: pd.DataFrame, clave: str, ahora, titul
     fig.update_layout(title=titulo, yaxis=dict(range=[0, 108], ticksuffix=" %", gridcolor="#EEF1F6"),
                       xaxis=dict(tickformat="%d/%m", gridcolor="#EEF1F6", range=[x0 - pd.Timedelta(hours=12),
                                                                                pd.Timestamp(ahora) + pd.Timedelta(days=1)]))
-    grafico(fig, alto=400)
+    muchas = h[clave].nunique() > 12          # con 27 lineas la leyenda tapaba el grafico: el nombre va en el hover
+    grafico(fig, alto=400, leyenda=not muchas)
     st.caption("Cada escalón es una actualización guardada de la matriz en Drive (se revisa cada hora en días hábiles). "
-               "Las líneas punteadas marcan el inicio de cada semana.")
+               "Las líneas punteadas marcan el inicio de cada semana." + (" Pasa el mouse sobre una línea para ver la acción." if muchas else ""))
 
 
 def tabla_semanal(hist: pd.DataFrame, actual: pd.DataFrame, clave: str, ahora) -> pd.DataFrame:
