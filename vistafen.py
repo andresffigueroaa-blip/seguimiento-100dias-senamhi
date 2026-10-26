@@ -72,6 +72,9 @@ def render(D: dict) -> None:
         ("Actualizadas esta semana", f"{camb} / {len(v)}", f"respecto al {fecha(ant)}" if ant else "sin registro previo",
          AMARILLO if camb < len(v) else AZUL)])
 
+    # ------------------------------------------------------------------ el grafico principal: cada accion contra la meta del 100 %
+    _hacia_la_meta(v, sel_tipo in (None, "Todas"))
+
     # ------------------------------------------------------------------ por tipo de meta (siempre, para ver el conjunto)
     if sel_tipo in (None, "Todas"):
         st.markdown("### Por tipo de meta")
@@ -153,6 +156,55 @@ def render(D: dict) -> None:
                     cols[i].link_button(f"Abrir evidencia {i + 1}", u, icon=":material/open_in_new:", width="stretch")
     st.download_button("Descargar en Excel", excel({"Acciones": v.drop(columns=["Enlaces"]), "Historial": hist[hist["Clave"].isin(v["Clave"])]}),
                        f"acciones_prioritarias_{hoy:%Y%m%d}.xlsx", icon=":material/download:", key="xfen")
+
+
+def _hacia_la_meta(v: pd.DataFrame, por_tipo: bool) -> None:
+    """Una barra por accion, de 0 a 100 %, con la meta (100 %) como linea; color = tipo de meta, agrupadas por tipo.
+    Pedido del 26/10: «el eje de 0 a 100 %, los nombres y colores, facil de ver»."""
+    orden = [t for t in TIPOS_META + ["Sin tipo"] if (v["Tipo de meta"] == t).any()]
+    d = v.assign(_t=v["Tipo de meta"].map({t: i for i, t in enumerate(orden)}), _a=v["Avance (%)"].fillna(0))
+    d = d.sort_values(["_t", "_a"], ascending=[True, False]).reset_index(drop=True)
+    nombre = d["Nombre corto"].astype(str).map(lambda t: t if len(t) <= 26 else t[:24].rstrip() + "…")
+    x = [f"{n} · {c}" for n, c in zip(d["N°"], nombre)]
+    fig = go.Figure()
+    # banda de fondo por tipo de meta, con su nombre arriba
+    ini = 0
+    for t in orden:
+        n = int((d["Tipo de meta"] == t).sum())
+        if n == 0:
+            continue
+        fig.add_vrect(x0=ini - 0.5, x1=ini + n - 0.5, fillcolor=COLOR_TIPO[t], opacity=0.07, line_width=0)
+        fig.add_annotation(x=ini + (n - 1) / 2, y=113, text=f"<b>{t}</b> · {n}", showarrow=False, font=dict(size=13, color=COLOR_TIPO[t]))
+        ini += n
+    fig.add_bar(x=x, y=d["_a"], marker=dict(color=[COLOR_TIPO.get(t, "#B0BEC5") for t in d["Tipo de meta"]], line=dict(width=0),
+                                           cornerradius=5),
+                text=[f"{a:.0f} %" for a in d["_a"]], textposition="outside", textfont=dict(size=12), cliponaxis=False,
+                customdata=d[["Nombre corto", "Dirección", "Tipo de meta", "Eje corto", "Estado actual", "Meta 2026", "Meta 2027", "Meta ejecutada"]].astype(str).values,
+                hovertemplate="<b>%{customdata[0]}</b><br>%{customdata[1]} · %{customdata[2]}<br>Eje: %{customdata[3]}<br>"
+                              "Estado: %{customdata[4]}<br>Avance: %{y:.0f} %<br>Meta 2026: %{customdata[5]} · Meta 2027: %{customdata[6]} · "
+                              "Ejecutada: %{customdata[7]}<extra></extra>", showlegend=False)
+    # marca de estado encima de la barra
+    simb = {"Implementado": ("star", COLOR_ESTADO["Implementado"]), "En riesgo de retraso": ("triangle-up", COLOR_ESTADO["En riesgo de retraso"]),
+            "Sin iniciar": ("circle-open", "#90A4AE")}
+    for est, (s, c) in simb.items():
+        m = d["Estado actual"] == est
+        if m.any():
+            fig.add_scatter(x=[xi for xi, k in zip(x, m) if k], y=d.loc[m, "_a"] + 12, mode="markers", name=est,
+                            marker=dict(symbol=s, size=11, color=c, line=dict(width=1.5, color=c)), hoverinfo="skip")
+    fig.add_hline(y=100, line=dict(color=AMARILLO, width=2, dash="dash"), annotation_text="Meta 100 %",
+                  annotation_position="bottom right", annotation_font=dict(color="#8A6D00", size=12))
+    for t in orden:
+        fig.add_bar(x=[None], y=[None], name=t, marker=dict(color=COLOR_TIPO[t]))
+    fig = fig_base(fig, alto=600 if len(d) > 12 else 500)
+    # despues de fig_base, que pone la leyenda abajo y margen chico: aqui la leyenda va arriba y abajo caben los nombres
+    fig.update_layout(title="Cuánto falta para la meta: avance de cada acción (0 a 100 %)", bargap=0.3,
+                      xaxis=dict(tickangle=-45, tickfont=dict(size=11), showgrid=False, automargin=True),
+                      yaxis=dict(range=[0, 122], ticksuffix=" %", tickvals=[0, 25, 50, 75, 100], gridcolor="#EEF1F6"),
+                      legend=dict(orientation="h", y=1.12, x=1, xanchor="right", yanchor="bottom", font=dict(size=12)),
+                      margin=dict(l=10, r=10, t=90, b=10))
+    st.plotly_chart(fig, width="stretch")
+    st.caption("Cada barra es una acción (número y nombre corto); el color es el tipo de meta y la línea amarilla la meta del 100 %. "
+               "★ implementada · ▲ en riesgo · ○ sin iniciar. Pasa el mouse para ver dirección, eje, estado y metas.")
 
 
 def _cifras(items: list[tuple]) -> None:
