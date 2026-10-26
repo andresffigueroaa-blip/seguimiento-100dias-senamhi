@@ -11,8 +11,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from comun import (AMARILLO, AZUL, COLOR_DIR, COLOR_ESTADO, COLOR_TIPO, EXPLICA_TIPO, GRIS_TXT, barras_avance, dona_estado, etiqueta,
-                   evolucion, excel, fecha, fig_base, grafico, pct, por_direccion, seccion_historia, tarjetas)
+from comun import (AMARILLO, AZUL, COLOR_DIR, COLOR_ESTADO, COLOR_TIPO, EXPLICA_TIPO, GRIS_TXT, LINEA, TINTA, barras_avance, dona_estado,
+                   etiqueta, evolucion, excel, fecha, fig_base, grafico, pct, por_direccion, seccion_historia, tarjetas)
 from datos import ESTADOS_FEN, NOMBRE_DIR, TIPOS_META
 
 
@@ -163,18 +163,66 @@ def _cifras(items: list[tuple]) -> None:
         + "</div>", unsafe_allow_html=True)
 
 
+_CSS_MAPA = f"""
+<style>
+.accs {{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:10px;margin:4px 0 16px 0;}}
+.acc {{background:#fff;border:1px solid {LINEA};border-radius:10px;padding:10px 12px 9px 12px;border-left:6px solid #B0BEC5;
+       box-shadow:0 1px 2px rgba(27,42,74,.06);}}
+.acc .top {{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;}}
+.acc .num {{font-size:.8rem;color:{GRIS_TXT};font-weight:600;}}
+.acc .etq {{font-size:.72rem;padding:2px 9px;margin:0;}}
+.acc .nom {{font-size:.95rem;font-weight:600;color:{TINTA};line-height:1.25;min-height:2.5em;margin-bottom:7px;}}
+.acc .bar {{height:9px;background:#EEF1F6;border-radius:5px;overflow:hidden;}}
+.acc .bar div {{height:9px;border-radius:5px;}}
+.acc .pie {{display:flex;justify-content:space-between;font-size:.8rem;color:{GRIS_TXT};margin-top:5px;}}
+.acc .pie b {{color:{TINTA};}}
+.grp {{display:flex;align-items:baseline;gap:10px;margin:10px 0 2px 0;padding-bottom:4px;border-bottom:2px solid {LINEA};}}
+.grp .t {{font-size:1.05rem;font-weight:700;color:{AZUL};}}
+.grp .s {{font-size:.85rem;color:{GRIS_TXT};}}
+</style>"""
+
+_AGRUPAR = {"Eje temático": "Eje corto", "Estado actual": "Estado actual", "Dirección": "Dirección", "Tipo de meta": "Tipo de meta"}
+
+
 def _mapa(v: pd.DataFrame) -> None:
-    """Mapa de rectangulos: tipo de meta → eje tematico → accion (tamaño igual, color = avance). Clic para entrar."""
-    d = v.assign(n=1, Avance=v["Avance (%)"].fillna(0), Nombre=v["Nombre corto"].astype(str).map(lambda t: t if len(t) <= 48 else t[:46] + "…"))
-    fig = px.treemap(d, path=[px.Constant("Acciones prioritarias"), "Tipo de meta", "Eje corto", "Nombre"], values="n", color="Avance",
-                     color_continuous_scale=[[0, "#E8EDF3"], [0.5, "#7FA6D9"], [1, "#2E7D32"]], range_color=[0, 100],
-                     custom_data=["Dirección", "Estado actual", "Avance"], title="Acciones por tipo de meta y eje temático (color = avance)")
-    fig.update_traces(hovertemplate="<b>%{label}</b><br>%{customdata[0]} · %{customdata[1]}<br>Avance: %{customdata[2]:.0f} %<extra></extra>",
-                      textfont=dict(size=13), marker=dict(line=dict(color="white", width=2)), root_color="white")
-    fig.update_layout(coloraxis_colorbar=dict(title="Avance", ticksuffix=" %", thickness=12, len=0.6))
-    fig.update_traces(textfont=dict(size=13), insidetextfont=dict(size=12))
-    grafico(fig, alto=max(420, 34 * len(v) + 120) if len(v) < 12 else 620, leyenda=False)
-    st.caption("Clic en un tipo de meta o en un eje para acercarse; clic en el título superior para volver.")
+    """Tablero de tarjetas: una tarjeta por accion (borde y etiqueta = estado, barra = avance operativo),
+    agrupadas por lo que elija el usuario. Sustituye al mapa de rectangulos, que no se entendia."""
+    st.markdown("### Mapa de acciones")
+    modo = st.pills("Agrupar las acciones por", list(_AGRUPAR), default="Eje temático", key="mapafen")
+    col = _AGRUPAR[modo or "Eje temático"]
+    st.markdown(_CSS_MAPA, unsafe_allow_html=True)
+    if col == "Estado actual":
+        grupos = [e for e in ESTADOS_FEN if (v[col] == e).any()] + [g for g in v[col].dropna().unique() if g not in ESTADOS_FEN]
+    else:
+        grupos = list(v[col].fillna("Sin dato").value_counts().index)
+    html = []
+    for g in grupos:
+        d = v[v[col].fillna("Sin dato") == g].sort_values("Avance (%)", ascending=False)
+        impl = int((d["Estado actual"] == "Implementado").sum())
+        color_g = {"Estado actual": COLOR_ESTADO, "Dirección": COLOR_DIR, "Tipo de meta": COLOR_TIPO}.get(col, {}).get(g, AZUL)
+        html.append(f'<div class="grp"><span class="t" style="color:{color_g}">{g}</span>'
+                    f'<span class="s">{len(d)} acción{"es" if len(d) != 1 else ""} · avance promedio {pct(d["Avance (%)"].mean())}'
+                    f' · {impl} implementada{"s" if impl != 1 else ""}</span></div><div class="accs">')
+        for _, r in d.iterrows():
+            est = r["Estado actual"] or "Sin estado"
+            c_est = COLOR_ESTADO.get(est, "#B0BEC5")
+            av = 0 if pd.isna(r["Avance (%)"]) else max(0, min(100, float(r["Avance (%)"])))
+            nombre = str(r["Nombre corto"])
+            completo = str(r["Actividad"]).replace('"', "'")
+            extra = etiqueta("Actualizada", AMARILLO) if r["Cambió"] else ""
+            html.append(
+                f'<div class="acc" style="border-left-color:{c_est}" title="{completo}">'
+                f'<div class="top"><span class="num">N° {r["N°"]}</span>{etiqueta(r["Dirección"], COLOR_DIR.get(r["Dirección"], AZUL))}'
+                f'{etiqueta(est, c_est)}{extra}</div>'
+                f'<div class="nom">{nombre}</div>'
+                f'<div class="bar"><div style="width:{av:.0f}%;background:{c_est}"></div></div>'
+                f'<div class="pie"><span>Avance <b>{pct(r["Avance (%)"])}</b></span><span>Meta <b>{pct(r["Avance de la meta (%)"])}</b></span>'
+                f'<span>{r["Eje corto"] if col != "Eje corto" else r["Tipo de meta"]}</span></div></div>')
+        html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+    st.caption("Cada tarjeta es una acción: el color del borde y la etiqueta son el estado que declara la dirección; la barra es el "
+               "avance operativo; «Meta» es lo ejecutado sobre la meta del año. Pasa el mouse por una tarjeta para ver el nombre "
+               "completo; la ficha detallada está más abajo.")
 
 
 def _por_eje(v: pd.DataFrame) -> None:
