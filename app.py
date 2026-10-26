@@ -117,6 +117,16 @@ with c3:
 for aviso in D["avisos"]:
     st.warning(aviso, icon=":material/cloud_off:")
 
+# acceso directo a la hoja que alimenta el tablero (para actualizarla y comprobar que es esa)
+b1, b2, b3 = st.columns([1.6, 1.2, 4])
+b1.link_button("Abrir la matriz en Google Sheets", url_matriz(), icon=":material/table_view:", type="primary", width="stretch")
+if b2.button("Actualizar datos", icon=":material/refresh:", width="stretch", key="act_arriba"):
+    st.cache_data.clear()
+    st.rerun()
+b3.caption(f"El tablero lee esta hoja cada 5 minutos · última lectura {D['leido']:%d/%m/%Y %H:%M} "
+           f"({'Google Sheets' if D['fuentefen'] == 'drive' else 'copia local: la hoja no respondió'}). "
+           "Después de editarla, pulsa «Actualizar datos».")
+
 vistafen.render(D)
 
 st.markdown("---")
