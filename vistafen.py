@@ -117,7 +117,6 @@ def render(D: dict) -> None:
 
     # ------------------------------------------------------------------ metas
     st.markdown("### Metas: lo comprometido y lo ejecutado")
-    st.caption("«—» en una meta significa que la acción no es de ese año.")
     tabla = v[["N°", "Dirección", "Tipo de meta", "Eje corto", "Nombre corto", "Unidad", "Meta 2026", "Meta 2027", "Meta ejecutada",
                "Avance de la meta (%)", "Avance (%)", "Fecha de reporte", "Estado actual"]]
     st.dataframe(tabla, width="stretch", hide_index=True, height=min(560, 40 * len(tabla) + 60),
@@ -127,7 +126,6 @@ def render(D: dict) -> None:
 
     # ------------------------------------------------------------------ fichas
     st.markdown("### Ficha de cada acción")
-    st.caption("Todo lo que trae la matriz, tal como la llena cada dirección, con el nombre completo y sus evidencias.")
     for _, r in v.iterrows():
         est = r["Estado actual"]
         with st.expander(f"{r['N°']}  ·  {r['Dirección']}  ·  {r['Nombre corto']}  ·  {pct(r['Avance (%)'])}"):
