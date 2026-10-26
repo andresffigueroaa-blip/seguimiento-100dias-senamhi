@@ -32,7 +32,7 @@ jobs:
       - run: python snapshot.py
         env:
           MATRIZ_100DIAS_URL: ${{ secrets.MATRIZ_100DIAS_URL || 'https://drive.google.com/file/d/1TwD_YHGgUR_aossUkBO0MTir0o0_fCcI/view' }}
-          MATRIZ_FEN_URL: ${{ secrets.MATRIZ_FEN_URL || 'https://drive.google.com/file/d/1ct7JMGPEvOhJBI54CVTiKlmvuGt1rhDh/view' }}
+          MATRIZ_URL: ${{ secrets.MATRIZ_URL || 'https://docs.google.com/spreadsheets/d/1wQ1KOcAq_wri95X2WAOIc8H7CVWmLxSL/edit?gid=1959829384' }}
       - name: Guardar cambios en el repositorio
         run: |
           git config user.name "registro-de-cambios"

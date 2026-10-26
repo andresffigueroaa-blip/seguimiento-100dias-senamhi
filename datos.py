@@ -474,8 +474,16 @@ def inicio_semana(d) -> datetime:
 
 
 # ------------------------------------------------------------------ cargar
+# Matriz unica en Google Sheets (desde el 26/10/2026). Un secret MATRIZ_URL la reemplaza si algun dia cambia.
+URL_MATRIZ = "https://docs.google.com/spreadsheets/d/1wQ1KOcAq_wri95X2WAOIc8H7CVWmLxSL/edit?gid=1959829384"
+
+
+def url_matriz() -> str:
+    return secreto("MATRIZ_URL") or URL_MATRIZ
+
+
 def _fuente(nombre_secreto: str, local: Path):
-    url = secreto(nombre_secreto)
+    url = url_matriz() if nombre_secreto == "MATRIZ_FEN_URL" else secreto(nombre_secreto)
     if url:
         try:
             return descargar(url), "drive", ""

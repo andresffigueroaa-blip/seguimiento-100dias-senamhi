@@ -44,7 +44,7 @@ recargar_modulos_cambiados()
 
 import vistafen  # noqa: E402
 from comun import CSS, b64  # noqa: E402
-from datos import DIA_100, INICIO_GOBIERNO, cargar, secreto
+from datos import DIA_100, INICIO_GOBIERNO, cargar, secreto, url_matriz
 sys._seg_mtimes = _modulos_propios()   # fechas de lo recién importado
 
 st.set_page_config(page_title="Seguimiento de prioridades · SENAMHI", page_icon="assets/logo_senamhi.png",
@@ -89,8 +89,7 @@ faltan = (DIA_100 - hoy).days
 # ------------------------------------------------------------------ sidebar
 with st.sidebar:
     st.markdown(f'<div class="logo-caja"><img src="data:image/png;base64,{LOGO}" width="100%"></div>', unsafe_allow_html=True)
-    if secreto("MATRIZ_FEN_URL"):
-        st.link_button("Abrir la matriz en Drive", secreto("MATRIZ_FEN_URL"), icon=":material/edit:", width="stretch")
+    st.link_button("Abrir la matriz en Drive", url_matriz(), icon=":material/edit:", width="stretch", type="primary")
     if st.button("Actualizar datos", icon=":material/refresh:", width="stretch"):
         st.cache_data.clear()
         st.rerun()
