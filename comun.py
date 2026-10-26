@@ -93,12 +93,33 @@ def grafico(fig, alto=380, leyenda=True) -> None:
     st.plotly_chart(fig_base(fig, alto, leyenda), width="stretch")
 
 
+def envolver(t, ancho: int = 48) -> str:
+    """Parte un texto largo en varias lineas (<br>) sin cortarlo: en los graficos se lee el nombre completo."""
+    palabras, lineas, actual = str(t).split(), [], ""
+    for w in palabras:
+        if actual and len(actual) + 1 + len(w) > ancho:
+            lineas.append(actual)
+            actual = w
+        else:
+            actual = f"{actual} {w}".strip()
+    if actual:
+        lineas.append(actual)
+    return "<br>".join(lineas)
+
+
+def alto_por_lineas(etiquetas, base: int = 120, por_linea: int = 17, minimo: int = 26) -> int:
+    """Alto del grafico: plotly da a todas las filas el mismo alto, asi que manda la etiqueta con mas lineas."""
+    etiquetas = list(etiquetas)
+    lineas = max((str(e).count("<br>") + 1 for e in etiquetas), default=1)
+    return base + len(etiquetas) * max(minimo, por_linea * lineas + 14)
+
+
 def barras_avance(v: pd.DataFrame, etq: pd.Series, titulo: str, hover_cols: list[str]):
     """Barras horizontales de avance (fondo gris claro + barra del color del estado)."""
     import plotly.graph_objects as go
     vv = v.iloc[::-1]
     # nombres largos apretaban el gráfico y cortaban las cifras: se acortan (el nombre completo va en el hover)
-    etq = etq.iloc[::-1].astype(str).map(lambda t: t if len(t) <= 70 else t[:68].rstrip() + "…")
+    etq = etq.iloc[::-1].astype(str).map(envolver)
     fig = go.Figure()
     fig.add_bar(y=etq, x=[100] * len(vv), orientation="h", marker=dict(color="#EEF1F6"), width=0.6,
                 hoverinfo="skip", showlegend=False)

@@ -390,7 +390,7 @@ def leer_matriz_fen(contenido: bytes) -> pd.DataFrame:
             "Estado actual": estado, "Avance (%)": av, "Avance (fuente)": fuente,
             "Avance de la meta (%)": av_meta, "Fecha de reporte": _fecha_txt(_celda(f, c["fecha"])), "Detalle": det,
             "Evidencia": evid, "Enlaces": re.findall(r"https?://[^\s,;)]+", evid),
-            "Nombre corto": corto if len(corto) <= 90 else corto[:88].rstrip() + "…"})
+            "Nombre corto": corto})
     df = pd.DataFrame(out)
     df["Clave"] = clave_estable(df["Dirección"], df["Producto"].where(df["Producto"] != "", df["Actividad"]))
     df["Etiqueta"] = df["N°"].astype(str) + " · " + df["Dirección"]

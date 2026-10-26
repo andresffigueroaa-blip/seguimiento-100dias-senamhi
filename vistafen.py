@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from comun import (AMARILLO, AZUL, COLOR_DIR, COLOR_ESTADO, COLOR_TIPO, EXPLICA_TIPO, GRIS_TXT, LINEA, TINTA, barras_avance, dona_estado,
+from comun import (alto_por_lineas, envolver, AMARILLO, AZUL, COLOR_DIR, COLOR_ESTADO, COLOR_TIPO, EXPLICA_TIPO, GRIS_TXT, LINEA, TINTA, barras_avance, dona_estado,
                    etiqueta, evolucion, excel, fecha, fig_base, grafico, pct, por_direccion, seccion_historia, tarjetas)
 from datos import ESTADOS_FEN, NOMBRE_DIR, TIPOS_META
 
@@ -102,7 +102,7 @@ def render(D: dict) -> None:
     etq = v["N°"].astype(str) + " · " + v["Dirección"] + " · " + v["Nombre corto"].astype(str)
     grafico(barras_avance(v, etq, "% de avance operativo por acción",
                           ["Tipo de meta", "Eje corto", "Meta 2026", "Meta 2027", "Meta ejecutada", "Avance de la meta (%)", "Fecha de reporte"]),
-            alto=max(420, 34 * len(v) + 120))
+            alto=max(420, alto_por_lineas([envolver(e) for e in etq])))
     st.caption("La barra es el avance operativo que cada dirección reporta. El avance de la meta (ejecutada / meta del año) "
                "se ve al pasar el mouse y en la tabla de metas.")
 
@@ -163,15 +163,7 @@ def _hacia_la_meta(v: pd.DataFrame, por_tipo: bool) -> None:
     d = v.assign(_t=v["Tipo de meta"].map({t: i for i, t in enumerate(orden)}), _a=v["Avance (%)"].fillna(0))
     d = d.sort_values(["_t", "_a"], ascending=[True, False]).reset_index(drop=True)
     # nombre corto entero (en dos lineas si es largo), con su numero
-    def partir(t: str, ancho: int = 46) -> str:
-        t = str(t)
-        if len(t) <= ancho:
-            return t
-        corte = t.rfind(" ", 0, ancho)
-        corte = corte if corte > 15 else ancho
-        resto = t[corte:].strip()
-        return t[:corte].strip() + "<br>" + (resto if len(resto) <= ancho else resto[:ancho - 1].rstrip() + "…")
-    y = [f"<b>{n}</b> · {partir(c)}" for n, c in zip(d["N°"], d["Nombre corto"])]
+    y = [envolver(f"<b>{n}</b> · {c}") for n, c in zip(d["N°"], d["Nombre corto"])]
     fig = go.Figure()
     # banda de fondo por tipo de meta, con su nombre a la derecha
     ini = 0
@@ -203,7 +195,7 @@ def _hacia_la_meta(v: pd.DataFrame, por_tipo: bool) -> None:
     fig.add_vline(x=100, line=dict(color=AMARILLO, width=2, dash="dash"))
     for t in orden:
         fig.add_bar(y=[None], x=[None], name=t, marker=dict(color=COLOR_TIPO[t]))
-    fig = fig_base(fig, alto=max(360, 46 * len(d) + 130))
+    fig = fig_base(fig, alto=max(360, alto_por_lineas(y, base=140)))
     fig.update_layout(title="Cuánto falta para la meta: avance de cada acción", barmode="overlay", bargap=0.25,
                       yaxis=dict(autorange="reversed", tickfont=dict(size=12.5), automargin=True, showgrid=False),
                       xaxis=dict(range=[0, 138], tickvals=[0, 25, 50, 75, 100], ticktext=["0 %", "25 %", "50 %", "75 %", "100 %"], gridcolor="#EEF1F6", tickfont=dict(size=12.5)),
