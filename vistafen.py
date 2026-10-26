@@ -100,7 +100,7 @@ def render(D: dict) -> None:
 
     # ------------------------------------------------------------------ avance por acción (nombre corto)
     etq = v["N°"].astype(str) + " · " + v["Dirección"] + " · " + v["Nombre corto"].astype(str)
-    grafico(barras_avance(v, etq, "% de avance operativo por acción (color = estado actual)",
+    grafico(barras_avance(v, etq, "% de avance operativo por acción",
                           ["Tipo de meta", "Eje corto", "Meta 2026", "Meta 2027", "Meta ejecutada", "Avance de la meta (%)", "Fecha de reporte"]),
             alto=max(420, 34 * len(v) + 120))
     st.caption("La barra es el avance operativo que cada dirección reporta. El avance de la meta (ejecutada / meta del año) "
@@ -112,7 +112,7 @@ def render(D: dict) -> None:
     with b:
         por_direccion(v, "Avance promedio por dirección")
 
-    evolucion(hist, v, "Clave", D["ahora"], "Evolución del avance (color = dirección)")
+    evolucion(hist, v, "Clave", D["ahora"], "Evolución del avance")
     seccion_historia(hist, v, "Clave", D["ahora"], "fen")
 
     # ------------------------------------------------------------------ metas
