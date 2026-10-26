@@ -64,12 +64,12 @@ def render(D: dict) -> None:
     camb = int(v["Cambió"].sum())
     tarjetas([
         ("Acciones", len(v), f"{v['Dirección'].nunique()} direcciones · {v['Eje corto'].nunique()} ejes"),
-        ("Implementadas", int((v["Estado actual"] == "Implementado").sum()), "", COLOR_ESTADO["Implementado"]),
-        ("En proceso", int((v["Estado actual"] == "En proceso").sum()), "", COLOR_ESTADO["En proceso"]),
-        ("En riesgo o sin iniciar", riesgo, "", COLOR_ESTADO["En riesgo de retraso"] if riesgo else AZUL),
+        ("Acciones implementadas", int((v["Estado actual"] == "Implementado").sum()), "", COLOR_ESTADO["Implementado"]),
+        ("Acciones en proceso", int((v["Estado actual"] == "En proceso").sum()), "", COLOR_ESTADO["En proceso"]),
+        ("Acciones en riesgo o sin iniciar", riesgo, "", COLOR_ESTADO["En riesgo de retraso"] if riesgo else AZUL),
         ("Avance operativo promedio", pct(v["Avance (%)"].mean()), ""),
         ("Avance de la meta promedio", pct(v["Avance de la meta (%)"].mean()), ""),
-        ("Actualizadas esta semana", f"{camb} / {len(v)}", f"respecto al {fecha(ant)}" if ant else "sin registro previo",
+        ("Acciones actualizadas esta semana", f"{camb} / {len(v)}", f"respecto al {fecha(ant)}" if ant else "sin registro previo",
          AMARILLO if camb < len(v) else AZUL)])
 
     # ------------------------------------------------------------------ el grafico principal: cada accion contra la meta del 100 %
