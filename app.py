@@ -50,7 +50,7 @@ sys._seg_mtimes = _modulos_propios()   # fechas de lo recién importado
 st.set_page_config(page_title="Seguimiento de prioridades · SENAMHI", page_icon="assets/logo_senamhi.png",
                    layout="wide", initial_sidebar_state="collapsed")
 st.markdown(CSS, unsafe_allow_html=True)
-LOGO, LOGO_MINAM = b64("assets/logo_senamhi.png"), b64("assets/logo_minam.png")
+LOGO = b64("assets/logo_senamhi.png")
 
 
 # ------------------------------------------------------------------ acceso
@@ -86,34 +86,14 @@ hoy = D["hoy"]
 dia = (hoy - INICIO_GOBIERNO).days + 1
 faltan = (DIA_100 - hoy).days
 
-# ------------------------------------------------------------------ sidebar
-with st.sidebar:
-    st.markdown(f'<div class="logo-caja"><img src="data:image/png;base64,{LOGO}" width="100%"></div>', unsafe_allow_html=True)
-    st.link_button("Abrir la matriz en Drive", url_matriz(), icon=":material/edit:", width="stretch", type="primary")
-    if st.button("Actualizar datos", icon=":material/refresh:", width="stretch"):
-        st.cache_data.clear()
-        st.rerun()
-    st.caption(f"Leído el {D['leido']:%d/%m/%Y %H:%M} (hora de Lima). "
-               + ("Fuente: la matriz en Drive; se vuelve a leer cada 5 minutos." if D["fuentefen"] == "drive"
-                  else "Fuente: copia local de la matriz."))
-    st.caption(f"Gobierno desde el {INICIO_GOBIERNO:%d/%m/%Y}. Día 100: {DIA_100:%d/%m/%Y}.")
-    st.caption("Tipo de meta: Meta 100 días (compromisos de los primeros 100 días de gobierno), Meta 2026, Meta 2027 "
-               "y Meta 2026-2027 (empieza este año y continúa). Lo indica cada dirección en la columna «Tipo de meta»; "
-               "si no lo indica, se deduce de las metas: 0 significa que no es de ese año.")
-
-# ---------------------------------------------------------------- cabecera
-c1, c2, c3 = st.columns([1.1, 4.2, 1.4])
-with c1:
-    st.markdown(f'<img src="data:image/png;base64,{LOGO}" width="100%" style="max-width:200px">', unsafe_allow_html=True)
-with c2:
-    st.markdown('<div class="titulo"><h1>Seguimiento de prioridades · SENAMHI</h1>'
-                f'<p>Matriz de acciones prioritarias 2026-2027 · {len(D["fen"])} acciones: metas de los 100 días, 2026, 2027 y 2026-2027.</p></div>',
-                unsafe_allow_html=True)
-with c3:
-    st.markdown(f'<div class="dia"><div class="n">Día {dia}</div><div class="t">de 100 · '
-                f'{"faltan " + str(faltan) + " días" if faltan >= 0 else "plazo cumplido"}</div>'
-                f'<div class="barra"><div style="width:{min(max(dia, 0), 100)}%"></div></div></div>',
-                unsafe_allow_html=True)
+# ---------------------------------------------------------------- cabecera (mismo estilo que el tablero DMCA)
+st.markdown(f'<div class="cab"><img src="data:image/png;base64,{LOGO}">'
+            '<div><div class="tit">Seguimiento de prioridades · SENAMHI</div>'
+            f'<div class="sub">Matriz de acciones prioritarias 2026-2027 · {len(D["fen"])} acciones</div></div>'
+            f'<div class="dia"><div class="n">Día {dia}</div><div class="t">de 100 · '
+            f'{"faltan " + str(faltan) + " días" if faltan >= 0 else "plazo cumplido"}</div>'
+            f'<div class="barra"><div style="width:{min(max(dia, 0), 100)}%"></div></div></div></div>',
+            unsafe_allow_html=True)
 for aviso in D["avisos"]:
     st.warning(aviso, icon=":material/cloud_off:")
 
@@ -123,16 +103,10 @@ b1.link_button("Abrir la matriz en Google Sheets", url_matriz(), icon=":material
 if b2.button("Actualizar datos", icon=":material/refresh:", width="stretch", key="act_arriba"):
     st.cache_data.clear()
     st.rerun()
-b3.caption(f"El tablero lee esta hoja cada 5 minutos · última lectura {D['leido']:%d/%m/%Y %H:%M} "
-           f"({'Google Sheets' if D['fuentefen'] == 'drive' else 'copia local: la hoja no respondió'}). "
-           "Después de editarla, pulsa «Actualizar datos».")
+b3.caption(f"Última lectura: {D['leido']:%d/%m/%Y %H:%M}"
+           + ("" if D["fuentefen"] == "drive" else " · copia local, la hoja no respondió"))
 
 vistafen.render(D)
 
-st.markdown("---")
-f1, f2 = st.columns([5, 1])
-f1.caption(f"SENAMHI · Dirección de Meteorología, Clima y Ambiente Atmosférico · Datos al {hoy:%d/%m/%Y}. "
-           "Fuente: Matriz de acciones prioritarias en el marco del FEN · SENAMHI 2026-2027, en Drive (cada dirección "
-           "actualiza su fila; el tablero la lee cada 5 minutos y guarda cada cambio).")
-f2.markdown(f'<img src="data:image/png;base64,{LOGO_MINAM}" width="100%" style="max-width:150px;opacity:.85">',
-            unsafe_allow_html=True)
+st.markdown(f'<div class="pie">SENAMHI · Dirección de Meteorología, Clima y Ambiente Atmosférico · datos al {hoy:%d/%m/%Y} · '
+            'fuente: matriz de acciones prioritarias 2026-2027 en Google Sheets</div>', unsafe_allow_html=True)

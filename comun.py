@@ -8,7 +8,8 @@ import pandas as pd
 import streamlit as st
 
 AZUL, AMARILLO = "#344E80", "#EFC030"
-AZUL_OSCURO, TINTA, GRIS_TXT, LINEA = "#1F3560", "#1B2A4A", "#5B6B8A", "#E3E8F0"
+AZUL_OSCURO, TINTA, GRIS_TXT, LINEA = "#1F3560", "#070f25", "#5B6B8A", "#E3E8F0"
+LINEA_SENAMHI = "#044591"
 COLOR_ESTADO = {"Sin iniciar": "#B0BEC5", "En proceso": "#1E88E5", "Con riesgo / retraso": "#F9A825",
                 "En riesgo de retraso": "#F9A825", "Completado": "#2E7D32", "Implementado": "#2E7D32",
                 "Reprogramado": "#7A5195"}
@@ -23,26 +24,37 @@ MESES_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct"
 
 CSS = f"""
 <style>
-.block-container {{padding-top: 2.2rem; padding-bottom: 2rem; max-width: 1500px;}}
-html, body, [class*="css"] {{font-size: 16px;}}
-.kpis {{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:4px 0 18px 0;}}
-.kpi {{background:#fff;border-radius:12px;padding:14px 18px;border:1px solid {LINEA};border-left:6px solid {AZUL};}}
-.kpi .l {{font-size:.9rem;color:{GRIS_TXT};line-height:1.25;word-break:normal;overflow-wrap:normal;hyphens:none;}}
-.kpi .v {{font-size:2.2rem;font-weight:700;color:{AZUL};line-height:1.15;white-space:nowrap;}}
-.kpi .s {{font-size:.85rem;color:{GRIS_TXT};line-height:1.25;word-break:normal;overflow-wrap:normal;}}
-.dia {{background:{AZUL};color:#fff;border-radius:12px;padding:14px 20px;text-align:center;}}
-.dia .n {{font-size:2.6rem;font-weight:800;color:{AMARILLO};line-height:1;}}
-.dia .t {{font-size:.95rem;margin-top:4px;}}
-.barra {{height:10px;background:rgba(255,255,255,.25);border-radius:5px;margin-top:10px;overflow:hidden;}}
-.barra div {{height:10px;background:{AMARILLO};}}
-.titulo h1 {{margin:0;font-size:1.9rem;color:{AZUL};line-height:1.15;}}
-.titulo p {{margin:4px 0 0 0;color:{GRIS_TXT};font-size:1.05rem;}}
-.ficha {{background:#fff;border:1px solid {LINEA};border-radius:12px;padding:14px 18px;margin-bottom:8px;}}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+html, body, [class*="css"], .stMarkdown, .stDataFrame {{font-family: Inter, "Segoe UI", Calibri, Arial, sans-serif; font-size: 16px; color: {TINTA};}}
+.block-container {{padding-top: 0.9rem; padding-bottom: 2rem; max-width: 1480px;}}
+[data-testid="stSidebar"] {{display: none;}}
+[data-testid="stSidebarCollapsedControl"] {{display: none;}}
+header[data-testid="stHeader"] {{display: none;}}
+/* encabezado (mismo estilo que el tablero de la DMCA) */
+.cab {{display:flex;align-items:center;gap:18px;border-bottom:4px solid {LINEA_SENAMHI};padding:4px 0 10px 0;margin-bottom:12px;}}
+.cab img {{height:58px;}}
+.cab .tit {{font-size:1.5rem;font-weight:800;color:{LINEA_SENAMHI};line-height:1.1;}}
+.cab .sub {{font-size:.9rem;color:{GRIS_TXT};margin-top:2px;}}
+.cab .dia {{margin-left:auto;background:{LINEA_SENAMHI};color:#fff;border-radius:10px;padding:8px 16px;text-align:center;min-width:170px;}}
+.dia .n {{font-size:1.6rem;font-weight:800;color:{AMARILLO};line-height:1;}}
+.dia .t {{font-size:.8rem;margin-top:3px;}}
+.barra {{height:6px;background:rgba(255,255,255,.25);border-radius:3px;margin-top:6px;overflow:hidden;}}
+.barra div {{height:6px;background:{AMARILLO};}}
+div[data-testid="stPills"] button {{font-size:.95rem; font-weight:600;}}
+/* tarjeta: el número grande primero */
+.kpis {{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:6px 0 16px 0;}}
+.kpi {{background:#fff;border:1px solid {LINEA};border-radius:10px;padding:14px 16px 12px 16px;box-shadow:0 1px 2px rgba(7,15,37,.06);}}
+.kpi .v {{font-size:2.35rem;font-weight:800;color:{AZUL};line-height:1.05;white-space:nowrap;letter-spacing:-.5px;}}
+.kpi .l {{font-size:.92rem;color:{TINTA};font-weight:600;margin-top:6px;line-height:1.2;word-break:normal;overflow-wrap:normal;hyphens:none;}}
+.kpi .s {{font-size:.8rem;color:{GRIS_TXT};margin-top:2px;line-height:1.25;}}
+.ficha {{background:#fff;border:1px solid {LINEA};border-radius:10px;padding:12px 14px;margin-bottom:8px;}}
 .ficha b {{color:{TINTA};}}
-.etq {{display:inline-block;padding:3px 12px;border-radius:999px;color:#fff;font-weight:600;font-size:.85rem;margin-right:6px;}}
+.etq {{display:inline-block;padding:2px 11px;border-radius:999px;color:#fff;font-weight:600;font-size:.8rem;margin-right:6px;}}
 .logo-caja {{background:#fff;border:1px solid {LINEA};border-radius:10px;padding:10px 12px;margin-bottom:8px;}}
-h3 {{color:{AZUL} !important; font-size:1.35rem !important;}}
-.stTabs [data-baseweb="tab"] p {{font-size:1.1rem; font-weight:600;}}
+h2 {{color:{TINTA} !important; font-size:1.25rem !important; font-weight:700 !important;}}
+h3 {{color:{TINTA} !important; font-size:1.15rem !important; font-weight:700 !important;border-left:5px solid {AZUL};padding-left:10px !important;margin-top:.6rem !important;}}
+.stDataFrame thead tr th {{font-weight:700 !important;}}
+.pie {{color:{GRIS_TXT};font-size:.78rem;margin-top:16px;border-top:1px solid {LINEA};padding-top:6px;}}
 </style>"""
 
 
@@ -72,8 +84,8 @@ def tarjetas(items: list[tuple]) -> None:
     for it in items:
         etq, val, sub = it[:3]
         color = it[3] if len(it) > 3 and it[3] else AZUL
-        html.append(f'<div class="kpi" style="border-left-color:{color}"><div class="l">{etq}</div>'
-                    f'<div class="v" style="color:{color}">{val}</div><div class="s">{sub}</div></div>')
+        html.append(f'<div class="kpi" style="border-top:4px solid {color}"><div class="v" style="color:{color}">{val}</div>'
+                    f'<div class="l">{etq}</div>' + (f'<div class="s">{sub}</div>' if sub else "") + '</div>')
     st.markdown(f'<div class="kpis">{"".join(html)}</div>', unsafe_allow_html=True)
 
 
@@ -82,8 +94,8 @@ def etiqueta(texto: str, color: str) -> str:
 
 
 def fig_base(fig, alto=380, leyenda=True):
-    fig.update_layout(template="plotly_white", height=alto, font=dict(family="Segoe UI, Arial", size=13, color=TINTA),
-                      margin=dict(l=10, r=10, t=50, b=10), title_font=dict(size=17, color=AZUL),
+    fig.update_layout(template="plotly_white", height=alto, font=dict(family="Inter, Segoe UI, Arial", size=13, color=TINTA),
+                      margin=dict(l=10, r=10, t=44, b=10), title_font=dict(size=15, color=TINTA, family="Inter, Segoe UI, Arial"),
                       legend=dict(orientation="h", y=-0.16, title=None, font=dict(size=12)) if leyenda else None,
                       showlegend=leyenda, paper_bgcolor="white", plot_bgcolor="white")
     return fig
