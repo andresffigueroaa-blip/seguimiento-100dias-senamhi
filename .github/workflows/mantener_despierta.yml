@@ -1,26 +1,56 @@
-# Streamlit Community Cloud duerme la app si pasa ~12 horas sin visitas y alguien tiene que
-# despertarla a mano («Zzzz… Yes, get this app back up!»). Esta visita automática cada 4 horas
-# evita que llegue a dormirse. Cuesta unos segundos por corrida.
+# Streamlit Community Cloud duerme la app si pasa ~12 horas sin visitas reales. Una consulta con curl no cuenta
+# como visita (la app respondía 200 y aun así se dormía, 06/11/2026). Este robot abre la app en un navegador de verdad
+# cada 2 horas; si la encuentra dormida, pulsa «Yes, get this app back up!» y espera a que vuelva a cargar.
 name: Mantener despierta la app
 
 on:
   schedule:
-    - cron: "30 */4 * * *"
+    - cron: "30 */2 * * *"
   workflow_dispatch:
 
 jobs:
   visitar:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
-      - name: Visitar la app
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar el navegador
         run: |
-          for i in 1 2 3; do
-            code=$(curl -sS -L -o /dev/null -w "%{http_code}" --max-time 60 \
-              -A "Mozilla/5.0 (robot que mantiene despierta la app)" \
-              "https://seguimiento-100dias-senamhi-fmyrsuwri4c6p7xhgpzjft.streamlit.app/~/+/")
-            echo "intento $i: HTTP $code"
-            [ "$code" = "200" ] && exit 0
-            sleep 40
-          done
-          echo "::warning::La app no respondió 200; si está dormida hay que despertarla una vez a mano."
+          pip install playwright==1.48.0
+          python -m playwright install --with-deps chromium
+      - name: Abrir la app y despertarla si duerme
+        env:
+          APP_URL: https://seguimiento-100dias-senamhi-fmyrsuwri4c6p7xhgpzjft.streamlit.app/
+        run: |
+          cat > visita.py <<'EOF'
+          import os, sys, time
+          from playwright.sync_api import sync_playwright
+
+          URL = os.environ["APP_URL"]
+
+          def cargada(pg):
+              return any(f.locator('[data-testid="stApp"]').count() for f in pg.frames)
+
+          with sync_playwright() as p:
+              pg = p.chromium.launch().new_page()
+              for intento in range(1, 4):
+                  pg.goto(URL, timeout=120000)
+                  fin = time.time() + 240
+                  while time.time() < fin:
+                      boton = pg.get_by_role("button", name="Yes, get this app back up!")
+                      if boton.count():
+                          print("La app estaba dormida: se pulsa el botón para despertarla")
+                          boton.first.click()
+                          time.sleep(20)
+                      elif cargada(pg):
+                          time.sleep(15)          # una sesión real de unos segundos
+                          print(f"intento {intento}: app despierta y cargada")
+                          sys.exit(0)
+                      time.sleep(5)
+                  print(f"intento {intento}: no terminó de cargar")
+              print("::error::La app no cargó en 3 intentos")
+              sys.exit(1)
+          EOF
+          python visita.py
